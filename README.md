@@ -2,6 +2,10 @@
 
 Momentum pattern detection library for day trading.
 
+## Why This Library?
+
+Tired of rewriting the same pattern detection logic every time I start a new trading project. This is a standalone, reusable library to stop that cycle.
+
 ## Overview
 
 This library detects common momentum day trading patterns:
