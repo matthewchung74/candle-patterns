@@ -152,6 +152,42 @@ class PatternDetector(ABC):
             return 0.0
         return ((end_price - start_price) / start_price) * 100
 
+    def calculate_macd(
+        self,
+        closes: pd.Series,
+        fast: int = 12,
+        slow: int = 26,
+        signal: int = 9,
+    ) -> Optional[pd.DataFrame]:
+        """
+        Calculate MACD if enough bars available.
+
+        Args:
+            closes: Series of close prices
+            fast: Fast EMA period (default 12)
+            slow: Slow EMA period (default 26)
+            signal: Signal line period (default 9)
+
+        Returns:
+            DataFrame with 'macd', 'signal', 'histogram' columns,
+            or None if insufficient bars (< 35)
+        """
+        min_bars = slow + signal  # ~35 bars for stable values
+        if len(closes) < min_bars:
+            return None
+
+        fast_ema = closes.ewm(span=fast, adjust=False).mean()
+        slow_ema = closes.ewm(span=slow, adjust=False).mean()
+        macd_line = fast_ema - slow_ema
+        signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+        histogram = macd_line - signal_line
+
+        return pd.DataFrame({
+            "macd": macd_line,
+            "signal": signal_line,
+            "histogram": histogram,
+        })
+
     def not_detected(self, reason: str) -> PatternResult:
         """Helper to return a non-detected result with reason."""
         return PatternResult(

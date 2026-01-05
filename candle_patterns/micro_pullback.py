@@ -182,6 +182,10 @@ class MicroPullback(PatternDetector):
         if vwap is not None and len(vwap) == n:
             above_vwap = entry_candle["close"] > vwap.iloc[-1]
 
+        # Auto-calculate MACD if not provided and enough bars
+        if macd is None:
+            macd = self.calculate_macd(df["close"])
+
         macd_positive = None
         if macd is not None and "histogram" in macd.columns and len(macd) == n:
             macd_positive = macd.iloc[-1]["histogram"] > 0

@@ -122,6 +122,10 @@ class VWAPBreak(PatternDetector):
         stop_distance_cents = (entry_price - stop_price) * 100
 
         # Step 4: Confirmations
+        # Auto-calculate MACD if not provided and enough bars
+        if macd is None:
+            macd = self.calculate_macd(df["close"])
+
         macd_positive = None
         if macd is not None and "histogram" in macd.columns and len(macd) == n:
             macd_positive = macd.iloc[-1]["histogram"] > 0
@@ -271,6 +275,10 @@ class VWAPBreak(PatternDetector):
         entry_price = current_vwap + 0.02
         stop_price = hold_result["touch_low"] - 0.05
         stop_distance_cents = (entry_price - stop_price) * 100
+
+        # Auto-calculate MACD if not provided and enough bars
+        if macd is None:
+            macd = self.calculate_macd(df["close"])
 
         macd_positive = None
         if macd is not None and "histogram" in macd.columns and len(macd) == n:

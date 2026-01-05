@@ -10,11 +10,11 @@ Pattern Structure:
 3. Entry: Break above flag resistance
 
 Example:
-           /\
-          /  \____
-         /       \____  <- Flag (consolidation)
-        /             \
-       /               → BREAKOUT ENTRY
+           /\\
+          /  \\____
+         /       \\____  <- Flag (consolidation)
+        /             \\
+       /               -> BREAKOUT ENTRY
       /
      / <- Pole (strong move up)
     /
@@ -154,6 +154,10 @@ class BullFlag(PatternDetector):
         if n >= 9:
             ema_9 = df["close"].ewm(span=9, adjust=False).mean()
             above_9ema = entry_candle["close"] > ema_9.iloc[-1]
+
+        # Auto-calculate MACD if not provided and enough bars
+        if macd is None:
+            macd = self.calculate_macd(df["close"])
 
         macd_positive = None
         if macd is not None and "histogram" in macd.columns and len(macd) == n:
