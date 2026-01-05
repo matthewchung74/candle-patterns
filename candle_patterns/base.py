@@ -12,6 +12,16 @@ import pandas as pd
 
 
 @dataclass
+class ExitSignal:
+    """Exit signal detected during trade monitoring."""
+    signal_type: str  # "macd_cross", "volume_decline", "jackknife", "stop_hit"
+    triggered: bool
+    reason: str
+    bar_idx: Optional[int] = None
+    price: Optional[float] = None
+
+
+@dataclass
 class PatternResult:
     """Result of pattern detection."""
 
@@ -33,6 +43,9 @@ class PatternResult:
     above_vwap: Optional[bool] = None
     macd_positive: Optional[bool] = None
     volume_confirmation: Optional[bool] = None
+
+    # Exit signals (invalidation conditions)
+    exit_signals: Optional[List[ExitSignal]] = None
 
     # Debug info
     reason: Optional[str] = None
@@ -196,3 +209,167 @@ class PatternDetector(ABC):
             confidence=0.0,
             reason=reason,
         )
+
+    def check_exit_signals(
+        self,
+        bars: pd.DataFrame,
+        entry_idx: int,
+        entry_price: float,
+        stop_price: float,
+    ) -> List[ExitSignal]:
+        """
+        Check for exit/invalidation signals after entry.
+
+        Call this on each new bar after entry to monitor for exits.
+
+        Args:
+            bars: OHLCV DataFrame including bars after entry
+            entry_idx: Index of the entry bar
+            entry_price: Price at which position was entered
+            stop_price: Stop loss price
+
+        Returns:
+            List of ExitSignal objects (empty if no exits triggered)
+        """
+        signals = []
+        df = bars.copy().reset_index(drop=True)
+        n = len(df)
+
+        if entry_idx >= n - 1:
+            return signals  # Need at least one bar after entry
+
+        # Check bars after entry
+        post_entry = df.iloc[entry_idx + 1:]
+
+        # 1. Stop hit check
+        stop_signal = self._check_stop_hit(post_entry, stop_price)
+        if stop_signal:
+            signals.append(stop_signal)
+
+        # 2. MACD bearish crossover
+        macd_signal = self._check_macd_cross(df, entry_idx)
+        if macd_signal:
+            signals.append(macd_signal)
+
+        # 3. Volume decline (weakness)
+        vol_signal = self._check_volume_decline(df, entry_idx)
+        if vol_signal:
+            signals.append(vol_signal)
+
+        # 4. Jackknife rejection
+        jackknife_signal = self._check_jackknife(post_entry)
+        if jackknife_signal:
+            signals.append(jackknife_signal)
+
+        return signals
+
+    def _check_stop_hit(
+        self, post_entry: pd.DataFrame, stop_price: float
+    ) -> Optional[ExitSignal]:
+        """Check if price hit stop loss."""
+        for idx, row in post_entry.iterrows():
+            if row["low"] <= stop_price:
+                return ExitSignal(
+                    signal_type="stop_hit",
+                    triggered=True,
+                    reason=f"Stop loss hit: low {row['low']:.2f} <= stop {stop_price:.2f}",
+                    bar_idx=idx,
+                    price=stop_price,
+                )
+        return None
+
+    def _check_macd_cross(
+        self, df: pd.DataFrame, entry_idx: int
+    ) -> Optional[ExitSignal]:
+        """Check for bearish MACD crossover (MACD crosses below signal)."""
+        macd = self.calculate_macd(df["close"])
+        if macd is None:
+            return None
+
+        # Need at least 2 bars after entry to detect crossover
+        if entry_idx >= len(df) - 2:
+            return None
+
+        for i in range(entry_idx + 1, len(df)):
+            if i < 1:
+                continue
+
+            prev_macd = macd.iloc[i - 1]["macd"]
+            prev_signal = macd.iloc[i - 1]["signal"]
+            curr_macd = macd.iloc[i]["macd"]
+            curr_signal = macd.iloc[i]["signal"]
+
+            # Bearish cross: MACD was above signal, now below
+            if prev_macd >= prev_signal and curr_macd < curr_signal:
+                return ExitSignal(
+                    signal_type="macd_cross",
+                    triggered=True,
+                    reason="MACD crossed below signal line (bearish)",
+                    bar_idx=i,
+                    price=df.iloc[i]["close"],
+                )
+        return None
+
+    def _check_volume_decline(
+        self, df: pd.DataFrame, entry_idx: int
+    ) -> Optional[ExitSignal]:
+        """
+        Check for significant volume decline after entry.
+
+        Declining volume on continuation = weakness, potential exit.
+        """
+        if entry_idx >= len(df) - 3:
+            return None  # Need at least 3 bars after entry
+
+        entry_volume = df.iloc[entry_idx]["volume"]
+        post_entry = df.iloc[entry_idx + 1:]
+
+        if len(post_entry) < 3:
+            return None
+
+        # Check if last 3 bars have declining volume < 50% of entry
+        recent_avg_vol = post_entry.tail(3)["volume"].mean()
+
+        if recent_avg_vol < entry_volume * 0.5:
+            return ExitSignal(
+                signal_type="volume_decline",
+                triggered=True,
+                reason=f"Volume declining: {recent_avg_vol:.0f} < 50% of entry vol {entry_volume:.0f}",
+                bar_idx=len(df) - 1,
+                price=df.iloc[-1]["close"],
+            )
+        return None
+
+    def _check_jackknife(
+        self, post_entry: pd.DataFrame
+    ) -> Optional[ExitSignal]:
+        """
+        Check for jackknife rejection pattern.
+
+        Jackknife: Price makes new high then reverses sharply,
+        closing below the prior candle's low. Sign of trapped buyers.
+        """
+        if len(post_entry) < 2:
+            return None
+
+        for i in range(1, len(post_entry)):
+            curr = post_entry.iloc[i]
+            prev = post_entry.iloc[i - 1]
+
+            # Jackknife conditions:
+            # 1. Current bar made a higher high (new high attempt)
+            # 2. Current bar closes below prior bar's low (sharp rejection)
+            # 3. Current bar is red (close < open)
+            made_new_high = curr["high"] > prev["high"]
+            closes_below_prior_low = curr["close"] < prev["low"]
+            is_red = curr["close"] < curr["open"]
+
+            if made_new_high and closes_below_prior_low and is_red:
+                return ExitSignal(
+                    signal_type="jackknife",
+                    triggered=True,
+                    reason=f"Jackknife rejection: new high {curr['high']:.2f} then closed below prior low {prev['low']:.2f}",
+                    bar_idx=post_entry.index[i],
+                    price=curr["close"],
+                )
+        return None

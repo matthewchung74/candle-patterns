@@ -17,7 +17,7 @@ Usage:
         print(f"Entry: {result.entry_price}, Stop: {result.stop_price}")
 """
 
-from .base import PatternResult, PatternDetector
+from .base import PatternResult, PatternDetector, ExitSignal
 from .micro_pullback import MicroPullback
 from .bull_flag import BullFlag
 from .vwap_break import VWAPBreak
@@ -26,6 +26,7 @@ __version__ = "0.1.0"
 __all__ = [
     "PatternResult",
     "PatternDetector",
+    "ExitSignal",
     "MicroPullback",
     "BullFlag",
     "VWAPBreak",
