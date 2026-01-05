@@ -172,7 +172,12 @@ class MicroPullback(PatternDetector):
         stop_price = pullback_low - (self.config["stop_loss_cents"] / 100)
         stop_distance_cents = (entry_price - stop_price) * 100
 
-        # Step 7: Confirmations (advisory)
+        # Step 7: Check pullback volume vs surge volume
+        surge_volume = df.iloc[prior_move_start_idx:prior_move_end_idx + 1]["volume"].mean()
+        pullback_volume = df.iloc[pullback_start_idx:pullback_end_idx + 1]["volume"].mean()
+        volume_declining = pullback_volume < surge_volume
+
+        # Step 8: Confirmations (advisory)
         above_vwap = None
         if vwap is not None and len(vwap) == n:
             above_vwap = entry_candle["close"] > vwap.iloc[-1]
@@ -183,10 +188,12 @@ class MicroPullback(PatternDetector):
 
         # Calculate confidence based on confirmations
         confidence = 0.7  # Base confidence
+        if volume_declining:
+            confidence += 0.10
         if above_vwap:
-            confidence += 0.15
+            confidence += 0.10
         if macd_positive:
-            confidence += 0.15
+            confidence += 0.10
 
         return PatternResult(
             detected=True,
@@ -200,7 +207,7 @@ class MicroPullback(PatternDetector):
             candle_count=n - prior_move_start_idx,
             above_vwap=above_vwap,
             macd_positive=macd_positive,
-            volume_confirmation=None,  # TODO: Add volume check
+            volume_confirmation=volume_declining,
             reason="Pattern detected",
             details={
                 "prior_move_pct": prior_move_pct,
@@ -209,5 +216,8 @@ class MicroPullback(PatternDetector):
                 "pullback_candles": pullback_end_idx - pullback_start_idx + 1,
                 "prior_high": prior_high,
                 "pullback_low": pullback_low,
+                "surge_volume_avg": surge_volume,
+                "pullback_volume_avg": pullback_volume,
+                "volume_declining": volume_declining,
             },
         )
