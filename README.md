@@ -109,6 +109,56 @@ if result.pattern_name == "VWAPHold":
     print("VWAP acted as support!")
 ```
 
+## Confirmations
+
+### MACD (Auto-calculated)
+
+MACD is automatically calculated when >= 35 bars are provided. No need to pass it manually.
+
+- Uses standard (12, 26, 9) parameters
+- `macd_positive` = True when histogram > 0
+- Adds confidence bonus when positive
+
+```python
+result = detector.detect(bars)  # MACD calculated internally
+print(result.macd_positive)  # True/False/None (None if < 35 bars)
+```
+
+### Volume Confirmation
+
+- **Micro Pullback**: Pullback volume must be < surge volume
+- **Bull Flag**: Volume must decline during flag consolidation
+- **VWAP Break**: Volume spike (2x avg) on break
+
+```python
+print(result.volume_confirmation)  # True if volume confirms pattern
+```
+
+## Exit Signals
+
+Monitor for trade invalidation after entry:
+
+```python
+# After entering a trade, check for exit signals on each new bar
+signals = detector.check_exit_signals(
+    bars=updated_bars,
+    entry_idx=6,
+    entry_price=5.43,
+    stop_price=5.14
+)
+
+for signal in signals:
+    if signal.triggered:
+        print(f"EXIT: {signal.signal_type} - {signal.reason}")
+```
+
+| Signal | Trigger | Meaning |
+|--------|---------|---------|
+| `stop_hit` | Low <= stop price | Hard stop triggered |
+| `macd_cross` | MACD crosses below signal | Momentum fading |
+| `volume_decline` | Volume < 50% of entry | Buyers drying up |
+| `jackknife` | New high then close below prior low | Trapped buyers, reversal |
+
 ## PatternResult
 
 All detectors return a `PatternResult` with:
@@ -122,7 +172,9 @@ All detectors return a `PatternResult` with:
 | `stop_price` | float | Suggested stop loss price |
 | `stop_distance_cents` | float | Stop distance in cents |
 | `above_vwap` | bool | Price above VWAP (if provided) |
-| `macd_positive` | bool | MACD histogram positive (if provided) |
+| `macd_positive` | bool | MACD histogram positive (auto-calculated) |
+| `volume_confirmation` | bool | Volume confirms pattern |
+| `exit_signals` | list | Exit/invalidation signals |
 | `reason` | str | Why pattern was/wasn't detected |
 | `details` | dict | Pattern-specific metrics |
 
