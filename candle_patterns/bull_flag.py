@@ -58,6 +58,10 @@ class BullFlag(PatternDetector):
 
             # Risk
             "stop_loss": "low_of_flag",
+            "stop_buffer_cents": 5,  # Buffer below flag low
+
+            # Flag consolidation
+            "max_flag_range_pct": 15.0,  # Max range for tight consolidation
 
             # Minimum bars needed
             "min_bars_required": 8,
@@ -141,7 +145,8 @@ class BullFlag(PatternDetector):
 
         # Step 6: Calculate entry and stop
         entry_price = flag_high + 0.01  # 1 cent above flag resistance
-        stop_price = flag_low - 0.05  # 5 cents below flag low
+        stop_buffer = self.config["stop_buffer_cents"] / 100
+        stop_price = flag_low - stop_buffer
         stop_distance_cents = (entry_price - stop_price) * 100
 
         # Step 7: Confirmations
@@ -228,8 +233,9 @@ class BullFlag(PatternDetector):
             # Flag should have tight range (consolidation)
             flag_range_pct = self.calculate_move_pct(flag_low, flag_high)
 
-            # Consolidation should be less than pole move
-            if flag_range_pct < 15:  # Tight consolidation
+            # Consolidation should be tight (configurable)
+            max_range = self.config.get("max_flag_range_pct", 15.0)
+            if flag_range_pct < max_range:
                 return (start_idx, end_idx, flag_high, flag_low)
 
         return None

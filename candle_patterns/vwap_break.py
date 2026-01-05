@@ -163,7 +163,7 @@ class VWAPBreak(PatternDetector):
         self, df: pd.DataFrame
     ) -> Optional[tuple]:
         """
-        Find a period where price traded below VWAP.
+        Find the most recent period where price traded below VWAP.
 
         Returns:
             Tuple of (start_idx, end_idx, num_bars) or None
@@ -171,7 +171,8 @@ class VWAPBreak(PatternDetector):
         n = len(df)
         min_bars = self.config.get("min_time_below_minutes", 5)
 
-        # Look for consecutive bars below VWAP
+        # Find all below-VWAP periods, return the most recent one
+        periods = []
         below_count = 0
         below_start = None
 
@@ -181,15 +182,19 @@ class VWAPBreak(PatternDetector):
                     below_start = i
                 below_count += 1
             else:
-                # Reset if we find a bar above VWAP
+                # End of a below-VWAP period
                 if below_count >= min_bars:
-                    return (below_start, i - 1, below_count)
+                    periods.append((below_start, i - 1, below_count))
                 below_start = None
                 below_count = 0
 
         # Check if we ended below VWAP
         if below_count >= min_bars:
-            return (below_start, n - 2, below_count)
+            periods.append((below_start, n - 2, below_count))
+
+        # Return the most recent period (last in list)
+        if periods:
+            return periods[-1]
 
         return None
 

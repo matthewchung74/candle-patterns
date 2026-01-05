@@ -89,34 +89,35 @@ class MicroPullback(PatternDetector):
         df["is_green"] = df["close"] > df["open"]
 
         # Step 1: Find the pullback (look for recent red candles)
-        pullback_end_idx = n - 1
+        # Pullback is consecutive red candles just before the entry candle
+        # pullback_start_idx = first red candle (lower index)
+        # pullback_end_idx = last red candle (higher index, just before entry)
+
+        # Last bar should be green (potential entry)
+        if not df.iloc[-1]["is_green"]:
+            return self.not_detected("Last candle is red - waiting for green entry candle")
+
+        # Look for pullback before entry candle
+        red_count = 0
+        pullback_end_idx = None
         pullback_start_idx = None
 
-        # Count consecutive red candles from the end (going backwards)
-        # But the LAST bar should be green (potential entry)
-        if df.iloc[-1]["is_green"]:
-            # Last bar is green - potential entry candle
-            # Look for pullback before it
-            red_count = 0
-            for i in range(n - 2, -1, -1):
-                if not df.iloc[i]["is_green"]:  # Red candle
-                    red_count += 1
-                    if pullback_start_idx is None:
-                        pullback_end_idx = i
-                    pullback_start_idx = i
-                else:
-                    break  # Hit a green candle, pullback ends
+        for i in range(n - 2, -1, -1):
+            if not df.iloc[i]["is_green"]:  # Red candle
+                red_count += 1
+                if pullback_end_idx is None:
+                    pullback_end_idx = i  # First red found (highest index)
+                pullback_start_idx = i  # Keep updating to get lowest index
+            else:
+                break  # Hit a green candle, pullback ends
 
-            if red_count == 0:
-                return self.not_detected("No pullback found (no red candles)")
+        if red_count == 0:
+            return self.not_detected("No pullback found (no red candles)")
 
-            if red_count > self.config["max_pullback_candles"]:
-                return self.not_detected(
-                    f"Pullback too long: {red_count} candles > {self.config['max_pullback_candles']}"
-                )
-        else:
-            # Last bar is red - pattern not complete yet
-            return self.not_detected("Last candle is red - waiting for green entry candle")
+        if red_count > self.config["max_pullback_candles"]:
+            return self.not_detected(
+                f"Pullback too long: {red_count} candles > {self.config['max_pullback_candles']}"
+            )
 
         # Step 2: Find the prior move (green candles before pullback)
         if pullback_start_idx is None or pullback_start_idx < 3:

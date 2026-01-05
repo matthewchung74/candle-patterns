@@ -55,13 +55,27 @@ class PatternResult:
         """Allow using result directly in if statements."""
         return self.detected
 
-    @property
-    def risk_reward_ratio(self) -> Optional[float]:
-        """Calculate R:R if entry and stop are set."""
-        if self.entry_price and self.stop_price and self.stop_distance_cents:
-            # Assumes 2:1 minimum target
-            return 2.0
-        return None
+    def calc_risk_reward(self, target_price: float) -> Optional[float]:
+        """
+        Calculate R:R ratio for a given target price.
+
+        Args:
+            target_price: Profit target price
+
+        Returns:
+            Risk/reward ratio (e.g., 2.0 means 2:1)
+        """
+        if self.entry_price is None or self.stop_price is None:
+            return None
+        if self.entry_price == self.stop_price:
+            return None
+
+        risk = abs(self.entry_price - self.stop_price)
+        reward = abs(target_price - self.entry_price)
+
+        if risk == 0:
+            return None
+        return reward / risk
 
 
 class PatternDetector(ABC):
