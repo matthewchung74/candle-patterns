@@ -2,7 +2,7 @@
 Micro Pullback Pattern Detector
 ===============================
 
-Ross Cameron's favorite pattern for momentum stocks.
+Classic momentum pattern for day trading stocks.
 
 Pattern Structure:
 1. Strong prior move (3+ green candles, 5%+ gain)
@@ -28,7 +28,7 @@ class MicroPullback(PatternDetector):
     """
 
     def default_config(self) -> Dict[str, Any]:
-        """Default configuration matching Ross Cameron's criteria."""
+        """Default configuration for micro pullback detection."""
         return {
             # Prior move requirements
             "min_prior_move_pct": 5.0,  # Min 5% move before pullback

@@ -1,6 +1,6 @@
 # Candle Patterns
 
-Ross Cameron style momentum pattern detection for day trading.
+Momentum pattern detection library for day trading.
 
 ## Overview
 

@@ -35,7 +35,7 @@ class BullFlag(PatternDetector):
     """
 
     def default_config(self) -> Dict[str, Any]:
-        """Default configuration matching Ross Cameron's criteria."""
+        """Default configuration for bull flag detection."""
         return {
             # The Pole (Initial Surge)
             "min_pole_move_pct": 20.0,  # Min 20% move in pole

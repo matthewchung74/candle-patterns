@@ -1,5 +1,5 @@
 """
-Candle Patterns - Ross Cameron Style Pattern Detection
+Candle Patterns - Momentum Pattern Detection
 ======================================================
 
 Detects momentum day trading patterns:

@@ -3,7 +3,6 @@ Micro Pullback Test Fixtures
 ============================
 
 Real-world example bars for testing micro pullback detection.
-Based on Ross Cameron's labeled trades and typical patterns.
 """
 
 import pandas as pd
