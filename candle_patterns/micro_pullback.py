@@ -2,18 +2,26 @@
 Micro Pullback Pattern Detector
 ===============================
 
-Classic momentum pattern for day trading stocks.
+Momentum continuation pattern for day trading stocks.
+Tuned for Ross Cameron's trading style on volatile small caps.
 
 Pattern Structure:
-1. Strong prior move (2+ green candles, 5%+ gain)
-2. Very shallow pullback (1-3 red candles, max 10% retracement)
+1. Strong prior surge (2+ candles with >50% green, 5%+ net gain)
+2. Pullback/consolidation (configurable depth and length via config)
+   - Default: up to max_pullback_candles bars, max_pullback_pct retracement
+   - Ross's actual trades show 15-20% pullbacks on volatile names
 3. Entry trigger (configurable):
    - "first_green_after_pullback": Enter on first green candle (Ross's style)
    - "first_candle_new_high": Wait for breakout to new high (conservative)
 
+Detection uses flexible range-based logic:
+- Finds swing high in lookback window
+- Measures pullback depth from swing high (not strict consecutive candles)
+- Validates entry_price > stop_price before accepting pattern
+
 Example:
-    [GREEN][GREEN][GREEN][GREEN][red][red][GREEN→ENTRY]
-         Prior Move (5%+)        Pullback   Bounce/Breakout
+    [GREEN][GREEN][green][RED][red][green][GREEN→ENTRY]
+         Prior Surge (5%+)     Consolidation    Bounce
 """
 
 from typing import Optional, Dict, Any
@@ -120,10 +128,10 @@ class MicroPullback(PatternDetector):
 
         pullback_candle_count = pullback_end_idx - pullback_start_idx + 1
 
-        # Check pullback length (allow flexibility - up to max_pullback_candles + 2)
-        if pullback_candle_count > max_pullback_candles + 2:
+        # Check pullback length against config (no hidden buffer - config is source of truth)
+        if pullback_candle_count > max_pullback_candles:
             return self.not_detected(
-                f"Pullback too long: {pullback_candle_count} candles > {max_pullback_candles + 2}"
+                f"Pullback too long: {pullback_candle_count} candles > {max_pullback_candles}"
             )
 
         # Step 2: Find the prior surge (the move UP to the swing high)
@@ -179,7 +187,10 @@ class MicroPullback(PatternDetector):
                 f"Pullback too deep: {abs(pullback_pct):.1f}% > {self.config['max_pullback_pct']}%"
             )
 
-        # Step 4: Entry trigger
+        # Step 4: Calculate stop price first (needed for entry validation)
+        stop_price = pullback_low - (self.config["stop_loss_cents"] / 100)
+
+        # Step 5: Entry trigger
         entry_candle = df.iloc[-1]
         entry_mode = self.config.get("entry", "first_green_after_pullback")
 
@@ -195,27 +206,31 @@ class MicroPullback(PatternDetector):
             # Entry slightly above open of green candle
             entry_price = entry_candle["open"] + 0.01
 
-        # Step 5: Calculate stop
-        stop_price = pullback_low - (self.config["stop_loss_cents"] / 100)
+        # Step 6: Validate entry > stop (critical safety check)
+        # Reject pattern if entry would be at or below stop - invalid long setup
+        if entry_price <= stop_price:
+            return self.not_detected(
+                f"Invalid setup: entry ${entry_price:.2f} <= stop ${stop_price:.2f}"
+            )
+
         stop_distance_cents = (entry_price - stop_price) * 100
 
-        # Step 6: Enforce minimum R:R
+        # Step 7: Enforce minimum R:R
         estimated_target = entry_price + (prior_move_pct / 100 * entry_price)
         risk = entry_price - stop_price
-        if risk > 0:
-            estimated_rr = (estimated_target - entry_price) / risk
-            min_rr = self.config.get("min_rr_for_setup", 2.0)
-            if estimated_rr < min_rr:
-                return self.not_detected(
-                    f"R:R too low: {estimated_rr:.1f} < {min_rr}"
-                )
+        estimated_rr = (estimated_target - entry_price) / risk
+        min_rr = self.config.get("min_rr_for_setup", 2.0)
+        if estimated_rr < min_rr:
+            return self.not_detected(
+                f"R:R too low: {estimated_rr:.1f} < {min_rr}"
+            )
 
-        # Step 7: Volume confirmation
+        # Step 8: Volume confirmation
         surge_volume = surge_window["volume"].mean()
         pullback_volume = pullback_window["volume"].mean() if len(pullback_window) > 0 else 0
         volume_declining = pullback_volume < surge_volume
 
-        # Step 8: Confirmations (advisory)
+        # Step 9: Confirmations (advisory)
         above_vwap = None
         if vwap is not None and len(vwap) == n:
             above_vwap = entry_candle["close"] > vwap.iloc[-1]
