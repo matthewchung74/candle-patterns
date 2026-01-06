@@ -121,6 +121,20 @@ class VWAPBreak(PatternDetector):
         stop_price = current_vwap - (self.config["stop_buffer_cents"] / 100)
         stop_distance_cents = (entry_price - stop_price) * 100
 
+        # Step 3b: Enforce minimum R:R
+        # Estimate profit target based on recapture move (low below VWAP to current VWAP)
+        below_period_low = df.iloc[below_start_idx:below_end_idx + 1]["low"].min()
+        recapture_move = current_vwap - below_period_low
+        estimated_target = entry_price + recapture_move  # Expect continuation of similar magnitude
+        risk = entry_price - stop_price
+        if risk > 0:
+            estimated_rr = (estimated_target - entry_price) / risk
+            min_rr = self.config.get("min_rr_for_setup", 2.0)
+            if estimated_rr < min_rr:
+                return self.not_detected(
+                    f"R:R too low: {estimated_rr:.1f} < {min_rr}"
+                )
+
         # Step 4: Confirmations
         # Auto-calculate MACD if not provided and enough bars
         if macd is None:
@@ -280,6 +294,19 @@ class VWAPBreak(PatternDetector):
         entry_price = current_vwap + 0.02
         stop_price = hold_result["touch_low"] - 0.05
         stop_distance_cents = (entry_price - stop_price) * 100
+
+        # Enforce minimum R:R for hold pattern
+        # Estimate target based on bounce magnitude (VWAP to touch low distance)
+        bounce_potential = current_vwap - hold_result["touch_low"]
+        estimated_target = entry_price + bounce_potential
+        risk = entry_price - stop_price
+        if risk > 0:
+            estimated_rr = (estimated_target - entry_price) / risk
+            min_rr = self.config.get("min_rr_for_setup", 2.0)
+            if estimated_rr < min_rr:
+                return self.not_detected(
+                    f"R:R too low for VWAP Hold: {estimated_rr:.1f} < {min_rr}"
+                )
 
         # Auto-calculate MACD if not provided and enough bars
         if macd is None:

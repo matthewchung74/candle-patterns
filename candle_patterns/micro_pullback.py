@@ -5,13 +5,15 @@ Micro Pullback Pattern Detector
 Classic momentum pattern for day trading stocks.
 
 Pattern Structure:
-1. Strong prior move (3+ green candles, 5%+ gain)
-2. Very shallow pullback (1-2 red candles, max 3% retracement)
-3. Entry on first candle making new high
+1. Strong prior move (2+ green candles, 5%+ gain)
+2. Very shallow pullback (1-3 red candles, max 10% retracement)
+3. Entry trigger (configurable):
+   - "first_green_after_pullback": Enter on first green candle (Ross's style)
+   - "first_candle_new_high": Wait for breakout to new high (conservative)
 
 Example:
     [GREEN][GREEN][GREEN][GREEN][red][red][GREEN→ENTRY]
-         Prior Move (5%+)        Pullback   New High
+         Prior Move (5%+)        Pullback   Bounce/Breakout
 """
 
 from typing import Optional, Dict, Any
@@ -32,14 +34,15 @@ class MicroPullback(PatternDetector):
         return {
             # Prior move requirements
             "min_prior_move_pct": 5.0,  # Min 5% move before pullback
-            "min_green_candles_prior": 3,  # At least 3 green candles in surge
+            "min_green_candles_prior": 2,  # At least 2 green candles in surge
 
             # Pullback requirements
-            "max_pullback_candles": 2,  # Only 1-2 red candles
-            "max_pullback_pct": 3.0,  # Max 3% retracement
+            "max_pullback_candles": 3,  # 1-3 red candles
+            "max_pullback_pct": 10.0,  # Max 10% retracement
 
-            # Entry trigger
-            "entry": "first_candle_new_high",
+            # Entry trigger - Ross's style
+            # Options: "first_green_after_pullback" (aggressive) or "first_candle_new_high" (conservative)
+            "entry": "first_green_after_pullback",
 
             # Confirmation (advisory, not hard gates)
             "price_above_vwap": True,
@@ -62,7 +65,10 @@ class MicroPullback(PatternDetector):
         macd: Optional[pd.DataFrame] = None,
     ) -> PatternResult:
         """
-        Detect Micro Pullback pattern.
+        Detect Micro Pullback pattern using flexible range-based logic.
+
+        Instead of requiring strictly consecutive green/red candles,
+        this uses net movement over windows to find surge + pullback.
 
         Args:
             bars: OHLCV DataFrame (newest bar last)
@@ -81,101 +87,132 @@ class MicroPullback(PatternDetector):
         df = bars.copy().reset_index(drop=True)
         n = len(df)
 
-        # Need at least 6 bars: 3 green + 2 pullback + 1 potential entry
+        # Need at least 6 bars for pattern
         if n < 6:
             return self.not_detected(f"Insufficient bars: {n}")
 
         # Mark green/red candles
         df["is_green"] = df["close"] > df["open"]
 
-        # Step 1: Find the pullback (look for recent red candles)
-        # Pullback is consecutive red candles just before the entry candle
-        # pullback_start_idx = first red candle (lower index)
-        # pullback_end_idx = last red candle (higher index, just before entry)
-
-        # Last bar should be green (potential entry)
+        # Last bar should be green (potential entry candle)
         if not df.iloc[-1]["is_green"]:
             return self.not_detected("Last candle is red - waiting for green entry candle")
 
-        # Look for pullback before entry candle
-        red_count = 0
-        pullback_end_idx = None
-        pullback_start_idx = None
+        # === FLEXIBLE APPROACH ===
+        # Step 1: Find the pullback zone (recent consolidation/dip before entry)
+        # Look for a zone where price pulled back from a recent high
 
-        for i in range(n - 2, -1, -1):
-            if not df.iloc[i]["is_green"]:  # Red candle
-                red_count += 1
-                if pullback_end_idx is None:
-                    pullback_end_idx = i  # First red found (highest index)
-                pullback_start_idx = i  # Keep updating to get lowest index
-            else:
-                break  # Hit a green candle, pullback ends
+        max_pullback_candles = self.config["max_pullback_candles"]
 
-        if red_count == 0:
-            return self.not_detected("No pullback found (no red candles)")
+        # Find the recent swing high (highest high in last 15 candles, excluding last 1)
+        lookback = min(15, n - 1)
+        recent_bars = df.iloc[-(lookback + 1):-1]  # Exclude entry candle
 
-        if red_count > self.config["max_pullback_candles"]:
+        swing_high_idx_relative = recent_bars["high"].idxmax()
+        swing_high = recent_bars.loc[swing_high_idx_relative, "high"]
+
+        # Pullback zone is between swing high and entry candle
+        pullback_start_idx = swing_high_idx_relative + 1
+        pullback_end_idx = n - 2  # Just before entry candle
+
+        if pullback_end_idx < pullback_start_idx:
+            return self.not_detected("No pullback zone found after swing high")
+
+        pullback_candle_count = pullback_end_idx - pullback_start_idx + 1
+
+        # Check pullback length (allow flexibility - up to max_pullback_candles + 2)
+        if pullback_candle_count > max_pullback_candles + 2:
             return self.not_detected(
-                f"Pullback too long: {red_count} candles > {self.config['max_pullback_candles']}"
+                f"Pullback too long: {pullback_candle_count} candles > {max_pullback_candles + 2}"
             )
 
-        # Step 2: Find the prior move (green candles before pullback)
-        if pullback_start_idx is None or pullback_start_idx < 3:
-            return self.not_detected("Not enough bars before pullback")
+        # Step 2: Find the prior surge (the move UP to the swing high)
+        # Look for net positive movement before the swing high
+        min_green_prior = self.config["min_green_candles_prior"]
 
-        prior_move_end_idx = pullback_start_idx - 1
-        prior_move_start_idx = None
-        green_count = 0
+        # Search backward from swing high to find where surge started
+        surge_end_idx = swing_high_idx_relative
+        surge_start_idx = None
 
-        for i in range(prior_move_end_idx, -1, -1):
-            if df.iloc[i]["is_green"]:
-                green_count += 1
-                prior_move_start_idx = i
-            else:
-                break  # Hit a red candle
+        # Look back up to 10 bars for the surge start
+        for lookback_len in range(min_green_prior, min(11, surge_end_idx + 1)):
+            test_start = surge_end_idx - lookback_len + 1
+            if test_start < 0:
+                break
 
-        if green_count < self.config["min_green_candles_prior"]:
+            surge_window = df.iloc[test_start:surge_end_idx + 1]
+            surge_low = surge_window["low"].min()
+            surge_high = surge_window["high"].max()
+
+            # Calculate net move from low to high in window
+            net_move_pct = self.calculate_move_pct(surge_low, surge_high)
+
+            # Count mostly-green candles (allow some red)
+            green_count = surge_window["is_green"].sum()
+            green_ratio = green_count / len(surge_window)
+
+            # Accept if: net move >= min_prior_move AND mostly green (>50%)
+            if net_move_pct >= self.config["min_prior_move_pct"] and green_ratio >= 0.5:
+                surge_start_idx = test_start
+                break
+
+        if surge_start_idx is None:
             return self.not_detected(
-                f"Prior move too short: {green_count} green candles < {self.config['min_green_candles_prior']}"
+                f"No valid surge found (need {self.config['min_prior_move_pct']}%+ move with >50% green candles)"
             )
 
-        # Step 3: Calculate prior move percentage
-        move_start_price = df.iloc[prior_move_start_idx]["open"]
-        move_end_price = df.iloc[prior_move_end_idx]["high"]
-        prior_move_pct = self.calculate_move_pct(move_start_price, move_end_price)
+        # Step 3: Calculate actual surge and pullback metrics
+        surge_window = df.iloc[surge_start_idx:surge_end_idx + 1]
+        surge_low = surge_window["low"].min()
+        surge_high = surge_window["high"].max()
+        prior_move_pct = self.calculate_move_pct(surge_low, surge_high)
 
-        if prior_move_pct < self.config["min_prior_move_pct"]:
-            return self.not_detected(
-                f"Prior move too small: {prior_move_pct:.1f}% < {self.config['min_prior_move_pct']}%"
-            )
+        pullback_window = df.iloc[pullback_start_idx:pullback_end_idx + 1]
+        pullback_low = pullback_window["low"].min()
+        pullback_high = pullback_window["high"].max()
 
-        # Step 4: Calculate pullback percentage
-        pullback_high = df.iloc[pullback_start_idx:pullback_end_idx + 1]["high"].max()
-        pullback_low = df.iloc[pullback_start_idx:pullback_end_idx + 1]["low"].min()
-        pullback_pct = self.calculate_move_pct(move_end_price, pullback_low)
+        # Pullback percentage from swing high to pullback low
+        pullback_pct = self.calculate_move_pct(swing_high, pullback_low)
 
         if abs(pullback_pct) > self.config["max_pullback_pct"]:
             return self.not_detected(
                 f"Pullback too deep: {abs(pullback_pct):.1f}% > {self.config['max_pullback_pct']}%"
             )
 
-        # Step 5: Check if entry candle makes new high
+        # Step 4: Entry trigger
         entry_candle = df.iloc[-1]
-        prior_high = df.iloc[prior_move_end_idx]["high"]
+        entry_mode = self.config.get("entry", "first_green_after_pullback")
 
-        if entry_candle["high"] <= prior_high:
-            return self.not_detected(
-                f"Entry candle not making new high: {entry_candle['high']:.2f} <= {prior_high:.2f}"
-            )
+        if entry_mode == "first_candle_new_high":
+            # Conservative: require break of swing high
+            if entry_candle["high"] <= swing_high:
+                return self.not_detected(
+                    f"Entry candle not making new high: {entry_candle['high']:.2f} <= {swing_high:.2f}"
+                )
+            entry_price = swing_high + 0.01
+        else:
+            # Ross's style: enter on first green after pullback
+            # Entry slightly above open of green candle
+            entry_price = entry_candle["open"] + 0.01
 
-        # Step 6: Calculate entry and stop
-        entry_price = prior_high + 0.01  # 1 cent above prior high
+        # Step 5: Calculate stop
         stop_price = pullback_low - (self.config["stop_loss_cents"] / 100)
         stop_distance_cents = (entry_price - stop_price) * 100
 
-        # Step 7: Check pullback volume vs surge volume
-        surge_volume = df.iloc[prior_move_start_idx:prior_move_end_idx + 1]["volume"].mean()
-        pullback_volume = df.iloc[pullback_start_idx:pullback_end_idx + 1]["volume"].mean()
+        # Step 6: Enforce minimum R:R
+        estimated_target = entry_price + (prior_move_pct / 100 * entry_price)
+        risk = entry_price - stop_price
+        if risk > 0:
+            estimated_rr = (estimated_target - entry_price) / risk
+            min_rr = self.config.get("min_rr_for_setup", 2.0)
+            if estimated_rr < min_rr:
+                return self.not_detected(
+                    f"R:R too low: {estimated_rr:.1f} < {min_rr}"
+                )
+
+        # Step 7: Volume confirmation
+        surge_volume = surge_window["volume"].mean()
+        pullback_volume = pullback_window["volume"].mean() if len(pullback_window) > 0 else 0
         volume_declining = pullback_volume < surge_volume
 
         # Step 8: Confirmations (advisory)
@@ -183,7 +220,7 @@ class MicroPullback(PatternDetector):
         if vwap is not None and len(vwap) == n:
             above_vwap = entry_candle["close"] > vwap.iloc[-1]
 
-        # Auto-calculate MACD if not provided and enough bars
+        # Auto-calculate MACD if not provided
         if macd is None:
             macd = self.calculate_macd(df["close"])
 
@@ -191,7 +228,7 @@ class MicroPullback(PatternDetector):
         if macd is not None and "histogram" in macd.columns and len(macd) == n:
             macd_positive = macd.iloc[-1]["histogram"] > 0
 
-        # Calculate confidence based on confirmations
+        # Calculate confidence
         confidence = 0.7  # Base confidence
         if volume_declining:
             confidence += 0.10
@@ -200,6 +237,12 @@ class MicroPullback(PatternDetector):
         if macd_positive:
             confidence += 0.10
 
+        # Bonus confidence for tighter pullback
+        if abs(pullback_pct) < 5.0:
+            confidence += 0.05
+
+        green_count = surge_window["is_green"].sum()
+
         return PatternResult(
             detected=True,
             pattern_name="MicroPullback",
@@ -207,9 +250,9 @@ class MicroPullback(PatternDetector):
             entry_price=entry_price,
             stop_price=stop_price,
             stop_distance_cents=stop_distance_cents,
-            pattern_start_idx=prior_move_start_idx,
+            pattern_start_idx=surge_start_idx,
             pattern_end_idx=n - 1,
-            candle_count=n - prior_move_start_idx,
+            candle_count=n - surge_start_idx,
             above_vwap=above_vwap,
             macd_positive=macd_positive,
             volume_confirmation=volume_declining,
@@ -217,9 +260,9 @@ class MicroPullback(PatternDetector):
             details={
                 "prior_move_pct": prior_move_pct,
                 "pullback_pct": abs(pullback_pct),
-                "green_candles": green_count,
-                "pullback_candles": pullback_end_idx - pullback_start_idx + 1,
-                "prior_high": prior_high,
+                "green_candles": int(green_count),
+                "pullback_candles": pullback_candle_count,
+                "swing_high": swing_high,
                 "pullback_low": pullback_low,
                 "surge_volume_avg": surge_volume,
                 "pullback_volume_avg": pullback_volume,

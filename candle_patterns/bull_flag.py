@@ -149,6 +149,18 @@ class BullFlag(PatternDetector):
         stop_price = flag_low - stop_buffer
         stop_distance_cents = (entry_price - stop_price) * 100
 
+        # Step 6b: Enforce minimum R:R
+        # Estimate profit target based on pole move (flag breakout often equals pole)
+        estimated_target = entry_price + (pole_move_pct / 100 * entry_price)
+        risk = entry_price - stop_price
+        if risk > 0:
+            estimated_rr = (estimated_target - entry_price) / risk
+            min_rr = self.config.get("min_rr_for_setup", 2.0)
+            if estimated_rr < min_rr:
+                return self.not_detected(
+                    f"R:R too low: {estimated_rr:.1f} < {min_rr}"
+                )
+
         # Step 7: Confirmations
         above_vwap = None
         if vwap is not None and len(vwap) == n:
