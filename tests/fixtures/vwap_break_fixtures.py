@@ -182,3 +182,113 @@ VWAP_FAILED_HOLD = _make_bars_with_vwap([
 # Expected result:
 # - detected: False (for VWAPHold)
 # - reason: Next bar after touch is red and below VWAP
+
+
+# =============================================================================
+# LIMIT TESTS - Testing rules at their boundaries
+# =============================================================================
+
+# =============================================================================
+# VWAP BREAK - LIMIT: Exactly 5 Bars Below VWAP (minimum)
+# =============================================================================
+# Tests min_time_below_minutes: 5 at the exact limit.
+# Should PASS with exactly 5 bars below VWAP.
+
+VWAP_BREAK_LIMIT_BARS_BELOW = _make_bars_with_vwap([
+    # Exactly 5 bars below VWAP (minimum required)
+    (5.00, 5.05, 4.85, 4.90, 100000, 5.20),  # Bar 1: below VWAP
+    (4.90, 4.98, 4.82, 4.88, 110000, 5.19),  # Bar 2: below VWAP
+    (4.88, 4.95, 4.78, 4.85, 120000, 5.18),  # Bar 3: below VWAP, low 4.78
+    (4.85, 4.92, 4.80, 4.90, 130000, 5.17),  # Bar 4: below VWAP
+    (4.90, 5.10, 4.88, 5.05, 140000, 5.16),  # Bar 5: below VWAP (5 bars total)
+
+    # Break above VWAP with volume spike
+    (5.05, 5.30, 5.02, 5.25, 400000, 5.16),  # Bar 6: BREAK! (2.8x volume)
+    (5.25, 5.40, 5.22, 5.35, 350000, 5.17),  # Bar 7: Closes above VWAP
+])
+
+# Expected result:
+# - detected: True
+# - bars_below_vwap: 5 (at minimum)
+# - R:R: (5.17 - 4.78) / 0.12 = 3.25 ✓
+
+
+# =============================================================================
+# VWAP BREAK - LIMIT: Exactly 2.0x Volume Spike (minimum)
+# =============================================================================
+# Tests volume_spike_on_break: 2.0 at the exact limit.
+# Should have volume_confirmation: True with exactly 2.0x average.
+
+VWAP_BREAK_LIMIT_VOLUME_SPIKE = _make_bars_with_vwap([
+    # Trading below VWAP (5 bars with ~100k avg volume)
+    (5.00, 5.05, 4.85, 4.92, 100000, 5.20),  # Bar 1
+    (4.92, 4.98, 4.80, 4.88, 100000, 5.19),  # Bar 2
+    (4.88, 4.95, 4.78, 4.85, 100000, 5.18),  # Bar 3: low 4.78
+    (4.85, 4.92, 4.82, 4.90, 100000, 5.17),  # Bar 4
+    (4.90, 5.10, 4.88, 5.05, 100000, 5.16),  # Bar 5
+
+    # Break with exactly 2.0x volume (avg = ~100k, so need 200k)
+    # But avg includes all bars, so with 7 bars:
+    # avg = (100+100+100+100+100+200+200)/7 = 142k, need 284k for spike
+    # Let's make break bar exactly 2.0x of pre-break average
+    (5.05, 5.28, 5.02, 5.24, 200000, 5.16),  # Bar 6: BREAK! (2.0x of 100k avg)
+    (5.24, 5.38, 5.20, 5.35, 180000, 5.17),  # Bar 7: Continues above VWAP
+])
+
+# Expected result:
+# - detected: True
+# - volume_confirmation: True (at limit)
+
+
+# =============================================================================
+# VWAP BREAK - LIMIT: R:R Exactly 2.0 (minimum)
+# =============================================================================
+# Tests min_rr_for_setup: 2.0 at the exact limit.
+# Designed so recapture_move / risk = exactly ~2.0.
+
+VWAP_BREAK_LIMIT_RR = _make_bars_with_vwap([
+    # Trading below VWAP with controlled low for R:R = 2.0
+    # entry = VWAP + 0.02 = 5.18 + 0.02 = 5.20
+    # stop = VWAP - 0.10 = 5.18 - 0.10 = 5.08
+    # risk = 5.20 - 5.08 = 0.12
+    # For R:R = 2.0, need recapture_move = 0.24
+    # recapture_move = current_vwap - below_period_low = 5.18 - low
+    # low = 5.18 - 0.24 = 4.94
+    (5.05, 5.10, 4.95, 4.98, 100000, 5.20),  # Bar 1: below VWAP, low 4.95
+    (4.98, 5.02, 4.94, 4.96, 110000, 5.19),  # Bar 2: below VWAP, low 4.94 (key)
+    (4.96, 5.00, 4.95, 4.98, 120000, 5.18),  # Bar 3: below VWAP
+    (4.98, 5.08, 4.96, 5.02, 130000, 5.18),  # Bar 4: below VWAP
+    (5.02, 5.12, 5.00, 5.08, 140000, 5.17),  # Bar 5: below VWAP
+
+    # Break above VWAP
+    (5.08, 5.28, 5.05, 5.24, 350000, 5.17),  # Bar 6: BREAK!
+    (5.24, 5.35, 5.20, 5.32, 300000, 5.18),  # Bar 7: current_vwap = 5.18
+])
+
+# Expected result:
+# - detected: True
+# - R:R: (5.18 - 4.94) / 0.12 = 2.0 (at minimum limit)
+
+
+# =============================================================================
+# VWAP BREAK - LIMIT: Close Barely Above VWAP
+# =============================================================================
+# Tests that close > VWAP is sufficient (even by $0.01).
+# Should PASS with close just barely above VWAP.
+
+VWAP_BREAK_LIMIT_CLOSE_ABOVE = _make_bars_with_vwap([
+    # Trading below VWAP with deep lows for R:R
+    (5.00, 5.05, 4.85, 4.90, 100000, 5.20),  # Bar 1
+    (4.90, 4.98, 4.80, 4.88, 110000, 5.19),  # Bar 2
+    (4.88, 4.95, 4.75, 4.85, 120000, 5.18),  # Bar 3: low 4.75 for R:R
+    (4.85, 4.92, 4.80, 4.90, 130000, 5.17),  # Bar 4
+    (4.90, 5.08, 4.88, 5.05, 140000, 5.16),  # Bar 5
+
+    # Break where close is BARELY above VWAP
+    (5.05, 5.20, 5.02, 5.17, 350000, 5.16),  # Bar 6: close 5.17 > VWAP 5.16 ✓
+    (5.17, 5.22, 5.15, 5.19, 300000, 5.18),  # Bar 7: close 5.19 > VWAP 5.18 (barely)
+])
+
+# Expected result:
+# - detected: True
+# - Close is only $0.01 above VWAP (at limit)
