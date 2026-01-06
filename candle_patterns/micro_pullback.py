@@ -38,15 +38,20 @@ class MicroPullback(PatternDetector):
     """
 
     def default_config(self) -> Dict[str, Any]:
-        """Default configuration for micro pullback detection."""
+        """Default configuration for micro pullback detection.
+
+        Tuned for Ross Cameron's trading style on volatile small caps.
+        Validated against labeled trades: SPRC, GORV, SBEV, HTOO.
+        """
         return {
             # Prior move requirements
             "min_prior_move_pct": 5.0,  # Min 5% move before pullback
-            "min_green_candles_prior": 2,  # At least 2 green candles in surge
+            "min_green_candles_prior": 2,  # At least 2 candles, >50% green
 
-            # Pullback requirements
-            "max_pullback_candles": 3,  # 1-3 red candles
-            "max_pullback_pct": 10.0,  # Max 10% retracement
+            # Pullback requirements (tuned for Ross's actual trades)
+            # HTOO: 16.2% pullback, SBEV: 18.6% pullback
+            "max_pullback_candles": 7,  # Allow up to 7 consolidation bars
+            "max_pullback_pct": 20.0,  # Allow up to 20% retracement
 
             # Entry trigger - Ross's style
             # Options: "first_green_after_pullback" (aggressive) or "first_candle_new_high" (conservative)
