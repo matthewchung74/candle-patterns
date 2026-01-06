@@ -28,61 +28,67 @@ def _make_bars(data: list) -> pd.DataFrame:
 # =============================================================================
 # VALID MICRO PULLBACK
 # =============================================================================
-# Pattern: Stock surges 8% with 4 green candles, pulls back 2% with 2 red
-# candles, then makes new high on green candle.
+# Pattern: Stock surges 15% with 4 green candles, pulls back 5% with 2 red
+# candles, then bounces on green candle.
+#
+# Designed to pass R:R check (min 2.0):
+# - Prior move: 15% → estimated target +15% from entry
+# - Pullback: 5% with tight stop → good R:R
 #
 # Visual:
-#   Bar 1-4: Strong move from $5.00 to $5.40 (8% gain, 4 green)
-#   Bar 5-6: Shallow pullback to $5.30 (2% dip, 2 red)
-#   Bar 7: New high at $5.45 (entry candle, green)
+#   Bar 1-4: Strong move from $4.00 to $4.60 (15% gain, 4 green)
+#   Bar 5-6: Shallow pullback to $4.40 (4% dip, 2 red)
+#   Bar 7: Bounce candle (entry candle, green)
 
 MICRO_PULLBACK_VALID = _make_bars([
-    # Strong prior move (4 green candles, ~8% move)
-    (5.00, 5.08, 4.98, 5.07, 150000),  # Bar 1: +1.4%
-    (5.07, 5.18, 5.05, 5.16, 180000),  # Bar 2: +1.8%
-    (5.16, 5.28, 5.14, 5.26, 200000),  # Bar 3: +1.9%
-    (5.26, 5.42, 5.24, 5.40, 220000),  # Bar 4: +2.7% (high of move)
+    # Strong prior move (4 green candles, ~15% move)
+    (4.00, 4.12, 3.98, 4.10, 150000),  # Bar 1: +2.5%
+    (4.10, 4.25, 4.08, 4.22, 180000),  # Bar 2: +2.9%
+    (4.22, 4.40, 4.20, 4.38, 200000),  # Bar 3: +3.8%
+    (4.38, 4.62, 4.36, 4.60, 220000),  # Bar 4: +5.0% (high of move: 4.62)
 
-    # Shallow pullback (2 red candles, ~2% dip)
-    (5.40, 5.41, 5.32, 5.34, 100000),  # Bar 5: -1.1% (red)
-    (5.34, 5.36, 5.29, 5.30, 80000),   # Bar 6: -0.7% (red, pullback low)
+    # Shallow pullback (2 red candles, ~5% dip from high)
+    (4.60, 4.61, 4.45, 4.48, 100000),  # Bar 5: -2.6% (red)
+    (4.48, 4.50, 4.38, 4.40, 80000),   # Bar 6: -1.8% (red, pullback low: 4.38)
 
-    # Entry candle - new high
-    (5.30, 5.45, 5.28, 5.43, 250000),  # Bar 7: NEW HIGH (green, entry)
+    # Entry candle - bounce from pullback
+    (4.40, 4.55, 4.38, 4.52, 250000),  # Bar 7: green bounce (entry ~4.41)
 ])
 
 # Expected result:
 # - detected: True
-# - entry_price: ~5.43 (above prior high of 5.42)
-# - stop_price: ~5.14 (below pullback low of 5.29)
-# - prior_move_pct: ~8%
-# - pullback_pct: ~2%
+# - entry_price: ~4.41 (open + 0.01)
+# - stop_price: ~4.23 (pullback low 4.38 - 0.15)
+# - risk: ~0.18 ($4.41 - $4.23)
+# - target: ~4.41 + 15% = ~5.07
+# - R:R: (5.07 - 4.41) / 0.18 = ~3.7 (passes 2.0 min)
 
 
 # =============================================================================
 # MICRO PULLBACK - TOO DEEP
 # =============================================================================
-# Pattern: Good prior move, but pullback is too deep (5% vs max 3%)
+# Pattern: Good prior move, but pullback is too deep (25% vs max 20%)
 # Should NOT detect as valid micro pullback.
 
 MICRO_PULLBACK_TOO_DEEP = _make_bars([
-    # Strong prior move
-    (5.00, 5.08, 4.98, 5.07, 150000),
-    (5.07, 5.18, 5.05, 5.16, 180000),
-    (5.16, 5.28, 5.14, 5.26, 200000),
-    (5.26, 5.42, 5.24, 5.40, 220000),  # High: 5.42
+    # Strong prior move (15% gain)
+    (4.00, 4.12, 3.98, 4.10, 150000),
+    (4.10, 4.25, 4.08, 4.22, 180000),
+    (4.22, 4.40, 4.20, 4.38, 200000),
+    (4.38, 4.62, 4.36, 4.60, 220000),  # High: 4.62
 
-    # Deep pullback (5% dip - too deep for micro)
-    (5.40, 5.41, 5.20, 5.22, 120000),  # Bar 5: -3.3% (red)
-    (5.22, 5.24, 5.12, 5.15, 100000),  # Bar 6: -1.3% (red, low: 5.12 = 5.5% from high)
+    # Deep pullback (25% dip from high - exceeds 20% max)
+    # 4.62 * 0.75 = 3.465, so low needs to be ~3.46
+    (4.60, 4.61, 4.00, 4.05, 120000),  # Bar 5: big red
+    (4.05, 4.10, 3.45, 3.50, 100000),  # Bar 6: low: 3.45 = 25% from 4.62
 
-    # Attempted new high
-    (5.15, 5.44, 5.14, 5.42, 200000),  # Bar 7: recovery attempt
+    # Attempted bounce
+    (3.50, 3.80, 3.48, 3.75, 200000),  # Bar 7: green bounce attempt
 ])
 
 # Expected result:
 # - detected: False
-# - reason: "Pullback too deep: 5.5% > 3%"
+# - reason: "Pullback too deep: 25.x% > 20%"
 
 
 # =============================================================================

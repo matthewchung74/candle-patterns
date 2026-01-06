@@ -48,8 +48,8 @@ class TestMicroPullback:
 
         assert result.details is not None
         assert result.details["prior_move_pct"] >= 5.0
-        assert result.details["pullback_pct"] <= 3.0
-        assert result.details["green_candles"] >= 3
+        assert result.details["pullback_pct"] <= 20.0  # Updated for tuned config
+        assert result.details["green_candles"] >= 2  # Updated: now requires >50% green, not strict count
 
     def test_too_deep_pullback_rejected(self):
         """Test that deep pullback is rejected."""
