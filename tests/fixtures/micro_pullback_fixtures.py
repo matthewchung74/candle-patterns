@@ -264,18 +264,19 @@ MICRO_PULLBACK_LIMIT_PULLBACK_CANDLES = _make_bars([
 
 
 # =============================================================================
-# MICRO PULLBACK - LIMIT: Exactly 50% Green Ratio (minimum)
+# MICRO PULLBACK - LIMIT: Just Above 50% Green Ratio (minimum)
 # =============================================================================
-# Tests >50% green candle requirement at the exact limit.
-# 4 candles with exactly 2 green = 50% (should fail, needs >50%)
-# 3 candles with 2 green = 66% (should pass)
+# Tests >50% green candle requirement.
+# The detector requires strictly more than 50% green candles in the surge.
+# This fixture has 3 green out of 4 candles = 75%, which passes.
+# (Exactly 50% = 2/4 would fail since detector uses > not >=)
 
 MICRO_PULLBACK_LIMIT_GREEN_RATIO = _make_bars([
-    # Prior move with exactly 2 green out of 3 = 66% (>50%, at minimum to pass)
+    # Prior move with 3 green out of 4 = 75% (passes >50% requirement)
     (4.00, 4.08, 3.98, 3.99, 150000),  # Bar 1: RED (close < open)
     (3.99, 4.18, 3.97, 4.15, 180000),  # Bar 2: green +4%
     (4.15, 4.35, 4.12, 4.32, 200000),  # Bar 3: green +4%
-    (4.32, 4.52, 4.30, 4.50, 220000),  # Bar 4: green +4% (>50% green: 3/4=75%)
+    (4.32, 4.52, 4.30, 4.50, 220000),  # Bar 4: green +4% (3/4 = 75% green)
 
     # Shallow pullback
     (4.50, 4.51, 4.30, 4.32, 80000),   # Bar 5: red
@@ -287,4 +288,4 @@ MICRO_PULLBACK_LIMIT_GREEN_RATIO = _make_bars([
 
 # Expected result:
 # - detected: True
-# - green_candles: 3 out of 4 in surge = 75% (passes >50% requirement)
+# - green_ratio: 3 out of 4 in surge = 75% (passes >50% requirement)
