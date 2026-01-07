@@ -92,18 +92,20 @@ MICRO_PULLBACK_TOO_DEEP = _make_bars([
 
 
 # =============================================================================
-# MICRO PULLBACK - NO PRIOR MOVE
+# MICRO PULLBACK - NO VALID SURGE
 # =============================================================================
-# Pattern: Only 2 green candles before pullback (need 3+)
+# Pattern: Insufficient prior surge before pullback.
+# The detector requires: min_prior_move_pct AND >50% green candles in surge.
+# This fixture has a weak move that may not meet the threshold.
 # Should NOT detect as valid micro pullback.
 
 MICRO_PULLBACK_NO_PRIOR_MOVE = _make_bars([
     # Some noise before
-    (4.95, 4.98, 4.92, 4.96, 100000),  # Bar 1: noise
+    (4.95, 4.98, 4.92, 4.96, 100000),  # Bar 1: red (noise)
 
-    # Weak prior move (only 2 green candles)
+    # Weak prior move - only ~4.6% from low to high
     (4.96, 5.08, 4.95, 5.07, 150000),  # Bar 2: green
-    (5.07, 5.18, 5.05, 5.16, 180000),  # Bar 3: green (only 2 green)
+    (5.07, 5.18, 5.05, 5.16, 180000),  # Bar 3: green
 
     # Pullback
     (5.16, 5.17, 5.10, 5.12, 80000),   # Bar 4: red
@@ -115,7 +117,8 @@ MICRO_PULLBACK_NO_PRIOR_MOVE = _make_bars([
 
 # Expected result:
 # - detected: False
-# - reason: "Prior move too short: 2 green candles < 3"
+# - reason: "No valid surge found (need X%+ move with >50% green candles)"
+# Note: Actual rejection depends on min_prior_move_pct config value.
 
 
 # =============================================================================

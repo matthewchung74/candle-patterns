@@ -7,7 +7,7 @@ Run with: pytest tests/test_patterns.py -v
 
 import pytest
 import pandas as pd
-from candle_patterns import MicroPullback, BullFlag, VWAPBreak
+from candle_patterns import MicroPullback, BullFlag, VWAPBreak, OpeningRangeRetest
 from tests.fixtures.micro_pullback_fixtures import (
     MICRO_PULLBACK_VALID,
     MICRO_PULLBACK_TOO_DEEP,
@@ -33,6 +33,47 @@ from tests.fixtures.vwap_break_fixtures import (
     VWAP_BREAK_LIMIT_VOLUME_SPIKE,
     VWAP_BREAK_LIMIT_RR,
     VWAP_BREAK_LIMIT_CLOSE_ABOVE,
+)
+from tests.fixtures.exit_signal_fixtures import (
+    # Topping Tail
+    TOPPING_TAIL_VALID,
+    TOPPING_TAIL_WICK_TOO_SMALL,
+    TOPPING_TAIL_BODY_NOT_LOW,
+    TOPPING_TAIL_NOT_IN_PROFIT,
+    TOPPING_TAIL_LIMIT_WICK_RATIO,
+    TOPPING_TAIL_LIMIT_BODY_POSITION,
+    # Stop Hit
+    STOP_HIT_VALID_EXACT,
+    STOP_HIT_VALID_BELOW,
+    STOP_HIT_ABOVE_STOP,
+    STOP_HIT_LIMIT_MISS,
+    STOP_HIT_SECOND_BAR,
+    # Volume Decline
+    VOLUME_DECLINE_VALID,
+    VOLUME_DECLINE_NOT_ENOUGH_BARS,
+    VOLUME_DECLINE_STAYS_HIGH,
+    VOLUME_DECLINE_LIMIT_AT_50,
+    VOLUME_DECLINE_LIMIT_AT_49,
+    # Jackknife
+    JACKKNIFE_VALID,
+    JACKKNIFE_NOT_ENOUGH_BARS,
+    JACKKNIFE_NO_NEW_HIGH,
+    JACKKNIFE_ABOVE_PRIOR_LOW,
+    JACKKNIFE_GREEN_CANDLE,
+    JACKKNIFE_LIMIT_EQUAL_HIGH,
+    JACKKNIFE_LIMIT_EQUAL_LOW,
+    # MACD Cross
+    MACD_CROSS_VALID,
+    MACD_CROSS_NOT_ENOUGH_BARS,
+    MACD_CROSS_NOT_ENOUGH_AFTER_ENTRY,
+    MACD_CROSS_STAYS_BULLISH,
+    MACD_CROSS_BULLISH_CROSS,
+    MACD_CROSS_LIMIT_EQUALS_THEN_BELOW,
+)
+from tests.fixtures.opening_range_retest_fixtures import (
+    OPENING_RANGE_RETEST_VALID,
+    OPENING_RANGE_RETEST_NO_RETEST,
+    OPENING_RANGE_RETEST_OUTSIDE_WINDOW,
 )
 
 
@@ -290,6 +331,322 @@ class TestPatternResult:
         result = detector.detect(MICRO_PULLBACK_TOO_DEEP)
         if not result:
             assert result.detected is False
+
+
+class TestToppingTailExit:
+    """Tests for topping tail exit signal detection."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        # Use MicroPullback as a concrete PatternDetector for testing
+        self.detector = MicroPullback()
+
+    def _get_topping_tail_signal(self, fixture):
+        """
+        Helper to check for topping tail signal in fixture data.
+
+        Args:
+            fixture: Dict with 'entry_price' and 'bars' keys
+
+        Returns:
+            ExitSignal if topping tail detected, None otherwise
+        """
+        bars = fixture["bars"]
+        entry_price = fixture["entry_price"]
+        post_entry = bars.iloc[1:]  # Skip entry bar
+
+        signal = self.detector._check_topping_tail(post_entry, entry_price)
+        return signal
+
+    def test_valid_topping_tail_detected(self):
+        """Test that a valid topping tail is detected."""
+        signal = self._get_topping_tail_signal(TOPPING_TAIL_VALID)
+
+        assert signal is not None
+        assert signal.signal_type == "topping_tail"
+        assert signal.triggered is True
+        assert "upper wick" in signal.reason.lower()
+
+    def test_wick_too_small_rejected(self):
+        """Test that small upper wick (<2x body) is rejected."""
+        signal = self._get_topping_tail_signal(TOPPING_TAIL_WICK_TOO_SMALL)
+
+        assert signal is None  # Should not trigger
+
+    def test_body_not_low_rejected(self):
+        """Test that body not in lower third is rejected."""
+        signal = self._get_topping_tail_signal(TOPPING_TAIL_BODY_NOT_LOW)
+
+        assert signal is None  # Should not trigger
+
+    def test_not_in_profit_rejected(self):
+        """Test that topping tail below entry is rejected."""
+        signal = self._get_topping_tail_signal(TOPPING_TAIL_NOT_IN_PROFIT)
+
+        assert signal is None  # Should not trigger (not in profit)
+
+    # === LIMIT TESTS ===
+
+    def test_limit_wick_ratio_at_minimum(self):
+        """Test detection with exactly 2.0x wick ratio (minimum)."""
+        signal = self._get_topping_tail_signal(TOPPING_TAIL_LIMIT_WICK_RATIO)
+
+        assert signal is not None
+        assert signal.signal_type == "topping_tail"
+        assert signal.triggered is True
+
+    def test_limit_body_position_at_maximum(self):
+        """Test detection with body at exactly 0.33 position (maximum)."""
+        signal = self._get_topping_tail_signal(TOPPING_TAIL_LIMIT_BODY_POSITION)
+
+        assert signal is not None
+        assert signal.signal_type == "topping_tail"
+        assert signal.triggered is True
+
+
+class TestStopHitExit:
+    """Tests for stop hit exit signal detection."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.detector = MicroPullback()
+
+    def _get_stop_signal(self, fixture):
+        """Helper to check for stop hit signal."""
+        bars = fixture["bars"]
+        stop_price = fixture["stop_price"]
+        post_entry = bars.iloc[1:]  # Skip entry bar
+        return self.detector._check_stop_hit(post_entry, stop_price)
+
+    def test_valid_stop_hit_exact(self):
+        """Test that stop is triggered when low equals stop price."""
+        signal = self._get_stop_signal(STOP_HIT_VALID_EXACT)
+
+        assert signal is not None
+        assert signal.signal_type == "stop_hit"
+        assert signal.triggered is True
+
+    def test_valid_stop_hit_below(self):
+        """Test that stop is triggered when low goes below stop price."""
+        signal = self._get_stop_signal(STOP_HIT_VALID_BELOW)
+
+        assert signal is not None
+        assert signal.signal_type == "stop_hit"
+        assert signal.triggered is True
+
+    def test_stop_not_hit_above(self):
+        """Test that stop is NOT triggered when low stays above stop."""
+        signal = self._get_stop_signal(STOP_HIT_ABOVE_STOP)
+
+        assert signal is None
+
+    def test_limit_stop_barely_missed(self):
+        """Test that stop is NOT triggered when low barely misses."""
+        signal = self._get_stop_signal(STOP_HIT_LIMIT_MISS)
+
+        assert signal is None
+
+    def test_stop_hit_on_second_bar(self):
+        """Test that stop is detected on second bar."""
+        signal = self._get_stop_signal(STOP_HIT_SECOND_BAR)
+
+        assert signal is not None
+        assert signal.signal_type == "stop_hit"
+        assert signal.triggered is True
+
+
+class TestVolumDeclineExit:
+    """Tests for volume decline exit signal detection."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.detector = MicroPullback()
+
+    def _get_volume_signal(self, fixture):
+        """Helper to check for volume decline signal."""
+        bars = fixture["bars"]
+        entry_idx = fixture["entry_idx"]
+        return self.detector._check_volume_decline(bars, entry_idx)
+
+    def test_valid_volume_decline(self):
+        """Test that volume decline triggers at 40%."""
+        signal = self._get_volume_signal(VOLUME_DECLINE_VALID)
+
+        assert signal is not None
+        assert signal.signal_type == "volume_decline"
+        assert signal.triggered is True
+
+    def test_not_enough_bars_after_entry(self):
+        """Test that signal is NOT triggered with < 3 bars after entry."""
+        signal = self._get_volume_signal(VOLUME_DECLINE_NOT_ENOUGH_BARS)
+
+        assert signal is None
+
+    def test_volume_stays_high(self):
+        """Test that signal is NOT triggered when volume stays at 60%."""
+        signal = self._get_volume_signal(VOLUME_DECLINE_STAYS_HIGH)
+
+        assert signal is None
+
+    def test_limit_volume_at_50_percent(self):
+        """Test that 50% volume does NOT trigger (needs < 50%)."""
+        signal = self._get_volume_signal(VOLUME_DECLINE_LIMIT_AT_50)
+
+        assert signal is None
+
+    def test_limit_volume_at_49_percent(self):
+        """Test that 49% volume triggers."""
+        signal = self._get_volume_signal(VOLUME_DECLINE_LIMIT_AT_49)
+
+        assert signal is not None
+        assert signal.signal_type == "volume_decline"
+        assert signal.triggered is True
+
+
+class TestJackknifeExit:
+    """Tests for jackknife exit signal detection."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.detector = MicroPullback()
+
+    def _get_jackknife_signal(self, fixture):
+        """Helper to check for jackknife signal."""
+        bars = fixture["bars"]
+        post_entry = bars.iloc[1:]  # Skip entry bar
+        return self.detector._check_jackknife(post_entry)
+
+    def test_valid_jackknife(self):
+        """Test that jackknife triggers when all conditions met."""
+        signal = self._get_jackknife_signal(JACKKNIFE_VALID)
+
+        assert signal is not None
+        assert signal.signal_type == "jackknife"
+        assert signal.triggered is True
+
+    def test_not_enough_bars(self):
+        """Test that signal is NOT triggered with < 2 bars."""
+        signal = self._get_jackknife_signal(JACKKNIFE_NOT_ENOUGH_BARS)
+
+        assert signal is None
+
+    def test_no_new_high(self):
+        """Test that signal is NOT triggered without new high."""
+        signal = self._get_jackknife_signal(JACKKNIFE_NO_NEW_HIGH)
+
+        assert signal is None
+
+    def test_above_prior_low(self):
+        """Test that signal is NOT triggered when close >= prior low."""
+        signal = self._get_jackknife_signal(JACKKNIFE_ABOVE_PRIOR_LOW)
+
+        assert signal is None
+
+    def test_green_candle(self):
+        """Test that signal is NOT triggered on green candle."""
+        signal = self._get_jackknife_signal(JACKKNIFE_GREEN_CANDLE)
+
+        assert signal is None
+
+    def test_limit_equal_high(self):
+        """Test that high == prior high does NOT trigger (needs >)."""
+        signal = self._get_jackknife_signal(JACKKNIFE_LIMIT_EQUAL_HIGH)
+
+        assert signal is None
+
+    def test_limit_equal_low(self):
+        """Test that close == prior low does NOT trigger (needs <)."""
+        signal = self._get_jackknife_signal(JACKKNIFE_LIMIT_EQUAL_LOW)
+
+        assert signal is None
+
+
+class TestMACDCrossExit:
+    """Tests for MACD cross exit signal detection."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.detector = MicroPullback()
+
+    def _get_macd_signal(self, fixture):
+        """Helper to check for MACD cross signal."""
+        bars = fixture["bars"]
+        entry_idx = fixture["entry_idx"]
+        return self.detector._check_macd_cross(bars, entry_idx)
+
+    def test_valid_macd_cross(self):
+        """Test that bearish MACD crossover triggers."""
+        signal = self._get_macd_signal(MACD_CROSS_VALID)
+
+        assert signal is not None
+        assert signal.signal_type == "macd_cross"
+        assert signal.triggered is True
+
+    def test_not_enough_bars_for_macd(self):
+        """Test that signal is NOT triggered with < 35 bars."""
+        signal = self._get_macd_signal(MACD_CROSS_NOT_ENOUGH_BARS)
+
+        assert signal is None
+
+    def test_not_enough_bars_after_entry(self):
+        """Test that signal is NOT triggered with < 2 bars after entry."""
+        signal = self._get_macd_signal(MACD_CROSS_NOT_ENOUGH_AFTER_ENTRY)
+
+        assert signal is None
+
+    def test_macd_stays_bullish(self):
+        """Test that signal is NOT triggered when MACD stays above signal."""
+        signal = self._get_macd_signal(MACD_CROSS_STAYS_BULLISH)
+
+        assert signal is None
+
+    def test_bullish_cross_wrong_direction(self):
+        """Test that bullish cross (wrong direction) does NOT trigger."""
+        signal = self._get_macd_signal(MACD_CROSS_BULLISH_CROSS)
+
+        assert signal is None
+
+    def test_limit_equals_then_below(self):
+        """Test that MACD equaling signal then going below triggers."""
+        signal = self._get_macd_signal(MACD_CROSS_LIMIT_EQUALS_THEN_BELOW)
+
+        assert signal is not None
+        assert signal.signal_type == "macd_cross"
+        assert signal.triggered is True
+
+
+class TestOpeningRangeRetest:
+    """Tests for Opening Range Retest pattern detection."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        # Disable trend alignment to keep fixtures small and deterministic
+        self.detector = OpeningRangeRetest({
+            "trend_alignment": False,
+        })
+
+    def test_valid_orb_retest_detected(self):
+        """Test that a valid ORB retest is detected."""
+        result = self.detector.detect(OPENING_RANGE_RETEST_VALID)
+
+        assert result.detected is True
+        assert result.pattern_name == "OpeningRangeRetest"
+        assert result.entry_price is not None
+        assert result.stop_price is not None
+
+    def test_no_retest_rejected(self):
+        """Test that pattern without retest is rejected."""
+        result = self.detector.detect(OPENING_RANGE_RETEST_NO_RETEST)
+
+        assert result.detected is False
+        assert "retest" in result.reason.lower()
+
+    def test_outside_window_rejected(self):
+        """Test that bars outside the 90-minute window are rejected."""
+        result = self.detector.detect(OPENING_RANGE_RETEST_OUTSIDE_WINDOW)
+
+        assert result.detected is False
+        assert "window" in result.reason.lower()
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ Detects momentum day trading patterns:
 - Micro Pullback
 - Bull Flag
 - VWAP Break
+- Opening Range Retest
 
 Usage:
     from candle_patterns import MicroPullback, BullFlag, VWAPBreak
@@ -21,6 +22,7 @@ from .base import PatternResult, PatternDetector, ExitSignal
 from .micro_pullback import MicroPullback
 from .bull_flag import BullFlag
 from .vwap_break import VWAPBreak
+from .opening_range_retest import OpeningRangeRetest
 
 __version__ = "0.1.0"
 __all__ = [
@@ -30,4 +32,5 @@ __all__ = [
     "MicroPullback",
     "BullFlag",
     "VWAPBreak",
+    "OpeningRangeRetest",
 ]

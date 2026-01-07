@@ -13,6 +13,7 @@ This library detects common momentum day trading patterns:
 - **Micro Pullback** - Shallow retracement after a strong move
 - **Bull Flag** - Consolidation pattern with declining volume
 - **VWAP Break** - Price breaking above VWAP with volume
+- **Opening Range Retest** - ORB breakout with displacement + retest
 
 ## Installation
 
@@ -32,7 +33,7 @@ pip install -e .
 
 ```python
 import pandas as pd
-from candle_patterns import MicroPullback, BullFlag, VWAPBreak
+from candle_patterns import MicroPullback, BullFlag, VWAPBreak, OpeningRangeRetest
 
 # Your OHLCV data (newest bar last)
 bars = pd.DataFrame({
@@ -58,7 +59,7 @@ if result.detected:
 
 ### Micro Pullback
 
-A shallow retracement (1-2 candles, max 3%) after a strong prior move (3+ green candles, 5%+ gain).
+A flexible retracement after a strong prior move, tuned for Ross's actual 1-3 candle pullbacks.
 
 ```
 [GREEN][GREEN][GREEN][GREEN][red][red][GREEN→ENTRY]
@@ -69,9 +70,9 @@ A shallow retracement (1-2 candles, max 3%) after a strong prior move (3+ green 
 ```python
 detector = MicroPullback({
     "min_prior_move_pct": 5.0,
-    "min_green_candles_prior": 3,
-    "max_pullback_candles": 2,
-    "max_pullback_pct": 3.0,
+    "min_green_candles_prior": 2,
+    "max_pullback_candles": 7,
+    "max_pullback_pct": 20.0,
     "stop_loss_cents": 15,
 })
 ```
@@ -111,6 +112,21 @@ result = detector.detect(bars, vwap=vwap_series)
 
 if result.pattern_name == "VWAPHold":
     print("VWAP acted as support!")
+
+### Opening Range Retest (ORB)
+
+Opening Range Retest with displacement and retest entry within the first 90 minutes.
+
+```python
+detector = OpeningRangeRetest({
+    "opening_range_minutes": 5,   # 9:30-9:35 ET
+    "setup_window_minutes": 90,   # 9:30-11:00 ET
+    "displacement_or_pct": 0.20,  # % of OR range
+    "retest_zone_or_pct": 0.20,   # % of OR range
+    "fvg_requirement": "preferred",
+    "trend_alignment": True,      # 5-min EMA slope
+})
+```
 ```
 
 ## Confirmations

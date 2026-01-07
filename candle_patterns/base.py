@@ -275,6 +275,11 @@ class PatternDetector(ABC):
         if jackknife_signal:
             signals.append(jackknife_signal)
 
+        # 5. Topping tail (shooting star)
+        topping_signal = self._check_topping_tail(post_entry, entry_price)
+        if topping_signal:
+            signals.append(topping_signal)
+
         return signals
 
     def _check_stop_hit(
@@ -386,4 +391,66 @@ class PatternDetector(ABC):
                     bar_idx=post_entry.index[i],
                     price=curr["close"],
                 )
+        return None
+
+    def _check_topping_tail(
+        self, post_entry: pd.DataFrame, entry_price: float
+    ) -> Optional[ExitSignal]:
+        """
+        Check for topping tail (shooting star) pattern.
+
+        Topping tail indicates rejection at highs - sellers pushing price down.
+        Conditions:
+        1. Upper wick >= 2x the body size
+        2. Body in lower third of candle range
+        3. Price is above entry (we're in profit, this is a warning)
+        """
+        if len(post_entry) < 1:
+            return None
+
+        for i in range(len(post_entry)):
+            bar = post_entry.iloc[i]
+
+            high = bar["high"]
+            low = bar["low"]
+            open_price = bar["open"]
+            close = bar["close"]
+
+            # Calculate body and wicks
+            body_top = max(open_price, close)
+            body_bottom = min(open_price, close)
+            body_size = body_top - body_bottom
+            upper_wick = high - body_top
+            candle_range = high - low
+
+            # Skip if no range (doji-like with no movement)
+            if candle_range < 0.01:
+                continue
+
+            # Skip if body is zero (use small threshold)
+            if body_size < 0.005:
+                body_size = 0.005  # Prevent division by zero
+
+            # Topping tail conditions:
+            # 1. Upper wick at least 2x the body
+            # 2. Body in lower 1/3 of candle (close near low)
+            # 3. Price above entry (in profit territory)
+            upper_wick_ratio = upper_wick / body_size
+            body_position = (body_bottom - low) / candle_range  # 0 = body at bottom, 1 = body at top
+
+            is_topping_tail = (
+                upper_wick_ratio >= 2.0 and      # Long upper wick
+                body_position <= 0.33 and         # Body in lower third
+                close > entry_price               # We're in profit
+            )
+
+            if is_topping_tail:
+                return ExitSignal(
+                    signal_type="topping_tail",
+                    triggered=True,
+                    reason=f"Topping tail: upper wick {upper_wick:.2f} ({upper_wick_ratio:.1f}x body), rejection at {high:.2f}",
+                    bar_idx=post_entry.index[i],
+                    price=close,
+                )
+
         return None
