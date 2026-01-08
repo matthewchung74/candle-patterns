@@ -175,39 +175,32 @@ print(result.volume_confirmation)  # True if volume confirms pattern
 
 Confidence is a 0.0–1.0 score returned by each detector. It is advisory only; gating is handled by the consumer.
 
-Standard caps:
+Standard bases/caps:
 - **Micro Pullback / Bull Flag / VWAP Break / VWAP Hold**: base 0.65, cap 0.90
 - **Opening Range Retest**: base 0.70, cap 0.95
 
 Boosts by pattern:
 
-**Micro Pullback**
-- volume_declining +0.10
-- above_vwap +0.08
-- macd_positive +0.08
-- macd_slope_up +0.04
-- tight_pullback +0.06 (pullback < 5%)
-
-**Bull Flag**
-- volume_declining +0.10
-- above_vwap +0.08
-- above_9ema +0.06
-- macd_positive +0.08
-- macd_slope_up +0.04
-
-**VWAP Break**
-- volume_spike +0.10
-- macd_positive +0.08
-- macd_slope_up +0.04
-
-**VWAP Hold** (disabled by default)
-- macd_positive +0.08
-- macd_slope_up +0.04
-
-**Opening Range Retest**
-- fvg_found +0.10
-- confirmed +0.05
-- trend_alignment +0.05
+| Pattern | Boost | Notes |
+|--------|-------|-------|
+| Micro Pullback | volume_declining +0.10 | Pullback volume < surge volume |
+| Micro Pullback | above_vwap +0.08 | Price above VWAP |
+| Micro Pullback | macd_positive +0.08 | MACD histogram > 0 |
+| Micro Pullback | macd_slope_up +0.04 | MACD line rising vs 3 bars ago |
+| Micro Pullback | tight_pullback +0.06 | Pullback < 5% |
+| Bull Flag | volume_declining +0.10 | Flag volume declining |
+| Bull Flag | above_vwap +0.08 | Price above VWAP |
+| Bull Flag | above_9ema +0.06 | Price above 9 EMA |
+| Bull Flag | macd_positive +0.08 | MACD histogram > 0 |
+| Bull Flag | macd_slope_up +0.04 | MACD line rising vs 3 bars ago |
+| VWAP Break | volume_spike +0.10 | Break volume spike |
+| VWAP Break | macd_positive +0.08 | MACD histogram > 0 |
+| VWAP Break | macd_slope_up +0.04 | MACD line rising vs 3 bars ago |
+| VWAP Hold (disabled) | macd_positive +0.08 | MACD histogram > 0 |
+| VWAP Hold (disabled) | macd_slope_up +0.04 | MACD line rising vs 3 bars ago |
+| Opening Range Retest | fvg_found +0.10 | Displacement/FVG present |
+| Opening Range Retest | confirmed +0.05 | Breakout confirmation |
+| Opening Range Retest | trend_alignment +0.05 | 5-min EMA slope aligned |
 
 ## Exit Signals
 
