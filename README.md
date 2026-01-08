@@ -71,9 +71,14 @@ A flexible retracement after a strong prior move, tuned for Ross's actual 1-3 ca
 detector = MicroPullback({
     "min_prior_move_pct": 5.0,
     "min_green_candles_prior": 2,
-    "max_pullback_candles": 7,
     "max_pullback_pct": 20.0,
-    "stop_loss_cents": 15,
+    # Two-tier candle limits based on pullback depth
+    "shallow_pullback_threshold_pct": 12.0,  # <=12% is shallow, >12% is deep
+    "max_pullback_candles_shallow": 12,      # Shallow pullbacks: more time
+    "max_pullback_candles_deep": 7,          # Deep pullbacks: resolve quickly
+    # Percent-based stop with minimum floor
+    "stop_buffer_pct": 1.0,                  # 1% below pullback low
+    "stop_buffer_min_cents": 3,              # Minimum 3 cents
 })
 ```
 
@@ -102,7 +107,7 @@ detector = BullFlag({
 
 ### VWAP Break
 
-Price breaking above VWAP with volume confirmation. Also detects VWAP Hold variant.
+Price breaking above VWAP with volume confirmation. The VWAP Hold variant is supported but disabled by default.
 
 ```python
 from candle_patterns import VWAPBreak
@@ -112,6 +117,17 @@ result = detector.detect(bars, vwap=vwap_series)
 
 if result.pattern_name == "VWAPHold":
     print("VWAP acted as support!")
+```
+
+To enable the VWAP Hold variant:
+
+```python
+detector = VWAPBreak({
+    "vwap_hold_variant": {
+        "enabled": True,
+    },
+})
+```
 
 ### Opening Range Retest (ORB)
 
@@ -127,7 +143,6 @@ detector = OpeningRangeRetest({
     "trend_alignment": True,      # 5-min EMA slope
 })
 ```
-```
 
 ## Confirmations
 
@@ -137,11 +152,13 @@ MACD is automatically calculated when >= 35 bars are provided. No need to pass i
 
 - Uses standard (12, 26, 9) parameters
 - `macd_positive` = True when histogram > 0
-- Adds confidence bonus when positive
+- `macd_slope_up` = True when MACD line is above its value 3 bars ago
+- Adds confidence bonuses when positive
 
 ```python
 result = detector.detect(bars)  # MACD calculated internally
 print(result.macd_positive)  # True/False/None (None if < 35 bars)
+print(result.macd_slope_up)  # True/False/None (None if < 35 bars)
 ```
 
 ### Volume Confirmation
@@ -193,6 +210,7 @@ All detectors return a `PatternResult` with:
 | `stop_distance_cents` | float | Stop distance in cents |
 | `above_vwap` | bool | Price above VWAP (if provided) |
 | `macd_positive` | bool | MACD histogram positive (auto-calculated) |
+| `macd_slope_up` | bool | MACD line slope positive (auto-calculated) |
 | `volume_confirmation` | bool | Volume confirms pattern |
 | `exit_signals` | list | Exit/invalidation signals |
 | `reason` | str | Why pattern was/wasn't detected |
