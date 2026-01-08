@@ -171,6 +171,44 @@ print(result.macd_slope_up)  # True/False/None (None if < 35 bars)
 print(result.volume_confirmation)  # True if volume confirms pattern
 ```
 
+## Confidence Scoring
+
+Confidence is a 0.0–1.0 score returned by each detector. It is advisory only; gating is handled by the consumer.
+
+Standard caps:
+- **Micro Pullback / Bull Flag / VWAP Break / VWAP Hold**: base 0.65, cap 0.90
+- **Opening Range Retest**: base 0.70, cap 0.95
+
+Boosts by pattern:
+
+**Micro Pullback**
+- volume_declining +0.10
+- above_vwap +0.08
+- macd_positive +0.08
+- macd_slope_up +0.04
+- tight_pullback +0.06 (pullback < 5%)
+
+**Bull Flag**
+- volume_declining +0.10
+- above_vwap +0.08
+- above_9ema +0.06
+- macd_positive +0.08
+- macd_slope_up +0.04
+
+**VWAP Break**
+- volume_spike +0.10
+- macd_positive +0.08
+- macd_slope_up +0.04
+
+**VWAP Hold** (disabled by default)
+- macd_positive +0.08
+- macd_slope_up +0.04
+
+**Opening Range Retest**
+- fvg_found +0.10
+- confirmed +0.05
+- trend_alignment +0.05
+
 ## Exit Signals
 
 Monitor for trade invalidation after entry:
