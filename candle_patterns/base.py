@@ -42,6 +42,7 @@ class PatternResult:
     # Confirmation signals
     above_vwap: Optional[bool] = None
     macd_positive: Optional[bool] = None
+    macd_slope_up: Optional[bool] = None
     volume_confirmation: Optional[bool] = None
 
     # Exit signals (invalidation conditions)

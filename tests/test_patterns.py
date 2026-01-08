@@ -649,5 +649,129 @@ class TestOpeningRangeRetest:
         assert "window" in result.reason.lower()
 
 
+class TestConfidenceSystem:
+    """Tests for the standardized confidence scoring system."""
+
+    def test_micro_pullback_base_confidence(self):
+        """Test that MicroPullback starts at 65% base confidence."""
+        detector = MicroPullback()
+        result = detector.detect(MICRO_PULLBACK_VALID)
+
+        if result.detected:
+            # Base is 65%, max is 90%
+            assert 0.65 <= result.confidence <= 0.90
+
+    def test_bull_flag_base_confidence(self):
+        """Test that BullFlag starts at 65% base confidence."""
+        detector = BullFlag()
+        result = detector.detect(BULL_FLAG_VALID)
+
+        if result.detected:
+            # Base is 65%, max is 90%
+            assert 0.65 <= result.confidence <= 0.90
+
+    def test_vwap_break_base_confidence(self):
+        """Test that VWAPBreak starts at 65% base confidence."""
+        detector = VWAPBreak()
+        bars, vwap = VWAP_BREAK_VALID
+        result = detector.detect(bars, vwap=vwap)
+
+        if result.detected:
+            # Base is 65%, max is 90%
+            assert 0.65 <= result.confidence <= 0.90
+
+    def test_confidence_capped_at_90(self):
+        """Test that confidence is capped at 90%."""
+        detector = MicroPullback()
+        result = detector.detect(MICRO_PULLBACK_VALID)
+
+        if result.detected:
+            assert result.confidence <= 0.90
+
+    def test_macd_slope_up_field_exists(self):
+        """Test that macd_slope_up field is populated."""
+        detector = MicroPullback()
+        result = detector.detect(MICRO_PULLBACK_VALID)
+
+        if result.detected:
+            # Should be boolean or None (if insufficient bars)
+            assert result.macd_slope_up is None or isinstance(result.macd_slope_up, bool)
+
+    def test_macd_slope_up_in_bull_flag(self):
+        """Test that BullFlag has macd_slope_up field."""
+        detector = BullFlag()
+        result = detector.detect(BULL_FLAG_VALID)
+
+        if result.detected:
+            assert result.macd_slope_up is None or isinstance(result.macd_slope_up, bool)
+
+    def test_macd_slope_up_in_vwap_break(self):
+        """Test that VWAPBreak has macd_slope_up field."""
+        detector = VWAPBreak()
+        bars, vwap = VWAP_BREAK_VALID
+        result = detector.detect(bars, vwap=vwap)
+
+        if result.detected:
+            assert result.macd_slope_up is None or isinstance(result.macd_slope_up, bool)
+
+
+class TestConfidenceBoosts:
+    """Tests for individual confidence boost factors."""
+
+    def _create_bars_with_macd(self, n=50, trend='up'):
+        """Create test bars with controlled MACD behavior."""
+        import numpy as np
+
+        # Generate price data that creates predictable MACD
+        base_price = 10.0
+        if trend == 'up':
+            prices = base_price + np.linspace(0, 2, n) + np.random.normal(0, 0.05, n)
+        else:
+            prices = base_price + np.linspace(2, 0, n) + np.random.normal(0, 0.05, n)
+
+        bars = pd.DataFrame({
+            'timestamp': pd.date_range('2024-01-01 09:30', periods=n, freq='1min'),
+            'open': prices - 0.02,
+            'high': prices + 0.05,
+            'low': prices - 0.05,
+            'close': prices,
+            'volume': [100000] * n,
+        })
+        return bars
+
+    def test_confidence_boosted_by_volume_declining(self):
+        """Test that volume_declining adds to confidence."""
+        detector = MicroPullback()
+        result = detector.detect(MICRO_PULLBACK_VALID)
+
+        if result.detected and result.details:
+            # If volume is declining, confidence should be boosted
+            if result.details.get('volume_declining'):
+                # Base 65% + volume_declining 10% = at least 75%
+                assert result.confidence >= 0.75
+
+    def test_confidence_boosted_by_macd_positive(self):
+        """Test that macd_positive adds +8% to confidence."""
+        detector = MicroPullback()
+        result = detector.detect(MICRO_PULLBACK_VALID)
+
+        if result.detected:
+            # If MACD is positive, confidence should be boosted
+            if result.macd_positive:
+                # Should include +8% from macd_positive
+                assert result.confidence >= 0.73  # 65% base + 8%
+
+    def test_confidence_boosted_by_macd_slope_up(self):
+        """Test that macd_slope_up adds +4% to confidence."""
+        detector = MicroPullback()
+        result = detector.detect(MICRO_PULLBACK_VALID)
+
+        if result.detected:
+            # If MACD slope is up, confidence should be boosted
+            if result.macd_slope_up:
+                # Should include +4% from macd_slope_up
+                assert result.confidence >= 0.69  # 65% base + 4%
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

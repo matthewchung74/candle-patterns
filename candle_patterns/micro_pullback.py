@@ -8,8 +8,10 @@ Tuned for Ross Cameron's trading style on volatile small caps.
 Pattern Structure:
 1. Strong prior surge (2+ candles with >50% green, 5%+ net gain)
 2. Pullback/consolidation (configurable depth and length via config)
-   - Default: up to max_pullback_candles bars, max_pullback_pct retracement
-   - Ross's actual trades show 15-20% pullbacks on volatile names
+   - Two-tier candle limits based on pullback depth:
+     - Shallow (<=12%): up to 12 candles (more time to consolidate)
+     - Deep (>12%): up to 7 candles (must resolve quickly)
+   - Max pullback depth: 20% retracement from swing high
 3. Entry trigger (configurable):
    - "first_green_after_pullback": Enter on first green candle (Ross's style)
    - "first_candle_new_high": Wait for breakout to new high (conservative)
@@ -48,10 +50,14 @@ class MicroPullback(PatternDetector):
             "min_prior_move_pct": 5.0,  # Min 5% move before pullback
             "min_green_candles_prior": 2,  # At least 2 candles, >50% green
 
-            # Pullback requirements (tuned for Ross's actual trades)
-            # HTOO: 16.2% pullback, SBEV: 18.6% pullback
-            "max_pullback_candles": 7,  # Allow up to 7 consolidation bars
+            # Pullback depth limit
             "max_pullback_pct": 20.0,  # Allow up to 20% retracement
+
+            # Two-tier pullback candle limits based on depth
+            # Deep pullbacks should resolve quickly; shallow can consolidate longer
+            "shallow_pullback_threshold_pct": 12.0,  # Threshold between shallow/deep
+            "max_pullback_candles_shallow": 12,  # If pullback <= 12%: allow more time
+            "max_pullback_candles_deep": 7,  # If pullback > 12%: must resolve quickly
 
             # Entry trigger - Ross's style
             # Options: "first_green_after_pullback" (aggressive) or "first_candle_new_high" (conservative)
@@ -61,8 +67,10 @@ class MicroPullback(PatternDetector):
             "price_above_vwap": True,
             "macd_positive": True,
 
-            # Risk
-            "stop_loss_cents": 15,  # Tighter stop for micro pullback
+            # Risk - percent-based stop buffer with minimum floor
+            # Stop = pullback_low - max(stop_buffer_pct% of price, stop_buffer_min_cents)
+            "stop_buffer_pct": 1.0,  # 1% below pullback low
+            "stop_buffer_min_cents": 3,  # Minimum 3 cents buffer
 
             # Minimum bars needed
             "min_bars_required": 6,
@@ -115,8 +123,6 @@ class MicroPullback(PatternDetector):
         # Step 1: Find the pullback zone (recent consolidation/dip before entry)
         # Look for a zone where price pulled back from a recent high
 
-        max_pullback_candles = self.config["max_pullback_candles"]
-
         # Find the recent swing high (highest high in last 15 candles, excluding last 1)
         lookback = min(15, n - 1)
         recent_bars = df.iloc[-(lookback + 1):-1]  # Exclude entry candle
@@ -133,10 +139,25 @@ class MicroPullback(PatternDetector):
 
         pullback_candle_count = pullback_end_idx - pullback_start_idx + 1
 
-        # Check pullback length against config (no hidden buffer - config is source of truth)
+        # Calculate pullback depth first (needed for two-tier candle limit)
+        pullback_window = df.iloc[pullback_start_idx:pullback_end_idx + 1]
+        pullback_low = pullback_window["low"].min()
+        pullback_pct = abs(self.calculate_move_pct(swing_high, pullback_low))
+
+        # Two-tier pullback candle limit based on depth
+        # Deep pullbacks (>threshold) must resolve quickly; shallow can consolidate longer
+        shallow_threshold = self.config.get("shallow_pullback_threshold_pct", 12.0)
+        if pullback_pct > shallow_threshold:
+            max_pullback_candles = self.config.get("max_pullback_candles_deep", 7)
+            tier = "deep"
+        else:
+            max_pullback_candles = self.config.get("max_pullback_candles_shallow", 12)
+            tier = "shallow"
+
+        # Check pullback length against tier-appropriate limit
         if pullback_candle_count > max_pullback_candles:
             return self.not_detected(
-                f"Pullback too long: {pullback_candle_count} candles > {max_pullback_candles}"
+                f"Pullback too long: {pullback_candle_count} candles > {max_pullback_candles} ({tier}, {pullback_pct:.1f}% depth)"
             )
 
         # Step 2: Find the prior surge (the move UP to the swing high)
@@ -174,26 +195,31 @@ class MicroPullback(PatternDetector):
                 f"No valid surge found (need {self.config['min_prior_move_pct']}%+ move with >50% green candles)"
             )
 
-        # Step 3: Calculate actual surge and pullback metrics
+        # Step 3: Calculate actual surge metrics (pullback already calculated above)
         surge_window = df.iloc[surge_start_idx:surge_end_idx + 1]
         surge_low = surge_window["low"].min()
         surge_high = surge_window["high"].max()
         prior_move_pct = self.calculate_move_pct(surge_low, surge_high)
 
-        pullback_window = df.iloc[pullback_start_idx:pullback_end_idx + 1]
-        pullback_low = pullback_window["low"].min()
+        # Get pullback high (pullback_window, pullback_low, pullback_pct already calculated above)
         pullback_high = pullback_window["high"].max()
 
-        # Pullback percentage from swing high to pullback low
-        pullback_pct = self.calculate_move_pct(swing_high, pullback_low)
-
-        if abs(pullback_pct) > self.config["max_pullback_pct"]:
+        # Check max pullback depth
+        if pullback_pct > self.config["max_pullback_pct"]:
             return self.not_detected(
-                f"Pullback too deep: {abs(pullback_pct):.1f}% > {self.config['max_pullback_pct']}%"
+                f"Pullback too deep: {pullback_pct:.1f}% > {self.config['max_pullback_pct']}%"
             )
 
         # Step 4: Calculate stop price first (needed for entry validation)
-        stop_price = pullback_low - (self.config["stop_loss_cents"] / 100)
+        # Percent-based stop buffer with minimum floor
+        stop_buffer_pct = self.config.get("stop_buffer_pct", 1.0)
+        stop_buffer_min_cents = self.config.get("stop_buffer_min_cents", 3)
+
+        pct_buffer = pullback_low * (stop_buffer_pct / 100)
+        min_buffer = stop_buffer_min_cents / 100
+        stop_buffer = max(pct_buffer, min_buffer)
+
+        stop_price = pullback_low - stop_buffer
 
         # Step 5: Entry trigger
         entry_candle = df.iloc[-1]
@@ -220,6 +246,13 @@ class MicroPullback(PatternDetector):
 
         stop_distance_cents = (entry_price - stop_price) * 100
 
+        # Step 6b: Enforce minimum stop distance (prevents gap-down setups)
+        min_stop_distance_cents = self.config.get("min_stop_distance_cents", 3)
+        if stop_distance_cents < min_stop_distance_cents:
+            return self.not_detected(
+                f"Stop too tight: {stop_distance_cents:.1f}¢ < {min_stop_distance_cents}¢ min"
+            )
+
         # Step 7: Enforce minimum R:R
         estimated_target = entry_price + (prior_move_pct / 100 * entry_price)
         risk = entry_price - stop_price
@@ -245,28 +278,34 @@ class MicroPullback(PatternDetector):
             macd = self.calculate_macd(df["close"])
 
         macd_positive = None
+        macd_slope_up = None
         if macd is not None and "histogram" in macd.columns and len(macd) == n:
             macd_positive = macd.iloc[-1]["histogram"] > 0
+            # 3-bar MACD slope: compare current MACD line to 3 bars ago
+            if "macd" in macd.columns and len(macd) >= 4:
+                macd_slope_up = macd.iloc[-1]["macd"] > macd.iloc[-4]["macd"]
 
-        # Calculate confidence
-        confidence = 0.7  # Base confidence
+        # Calculate confidence (standardized system)
+        # Base: 65%, Cap: 90%, Gate: 80% (enforced in trade_engine)
+        confidence = 0.65  # Base confidence
         if volume_declining:
             confidence += 0.10
         if above_vwap:
-            confidence += 0.10
+            confidence += 0.08
         if macd_positive:
-            confidence += 0.10
-
-        # Bonus confidence for tighter pullback
-        if abs(pullback_pct) < 5.0:
-            confidence += 0.05
+            confidence += 0.08
+        if macd_slope_up:
+            confidence += 0.04
+        # Bonus for tighter pullback
+        if pullback_pct < 5.0:
+            confidence += 0.06
 
         green_count = surge_window["is_green"].sum()
 
         return PatternResult(
             detected=True,
             pattern_name="MicroPullback",
-            confidence=min(confidence, 1.0),
+            confidence=min(confidence, 0.90),  # Cap at 90%
             entry_price=entry_price,
             stop_price=stop_price,
             stop_distance_cents=stop_distance_cents,
@@ -275,11 +314,14 @@ class MicroPullback(PatternDetector):
             candle_count=n - surge_start_idx,
             above_vwap=above_vwap,
             macd_positive=macd_positive,
+            macd_slope_up=macd_slope_up,
             volume_confirmation=volume_declining,
             reason="Pattern detected",
             details={
                 "prior_move_pct": prior_move_pct,
-                "pullback_pct": abs(pullback_pct),
+                "pullback_pct": pullback_pct,
+                "pullback_tier": tier,
+                "max_pullback_candles": max_pullback_candles,
                 "green_candles": int(green_count),
                 "pullback_candles": pullback_candle_count,
                 "swing_high": swing_high,

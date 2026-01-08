@@ -177,24 +177,31 @@ class BullFlag(PatternDetector):
             macd = self.calculate_macd(df["close"])
 
         macd_positive = None
+        macd_slope_up = None
         if macd is not None and "histogram" in macd.columns and len(macd) == n:
             macd_positive = macd.iloc[-1]["histogram"] > 0
+            # 3-bar MACD slope: compare current MACD line to 3 bars ago
+            if "macd" in macd.columns and len(macd) >= 4:
+                macd_slope_up = macd.iloc[-1]["macd"] > macd.iloc[-4]["macd"]
 
-        # Calculate confidence
-        confidence = 0.6  # Base confidence
+        # Calculate confidence (standardized system)
+        # Base: 65%, Cap: 90%, Gate: 80% (enforced in trade_engine)
+        confidence = 0.65  # Base confidence
         if volume_declining:
-            confidence += 0.15
+            confidence += 0.10
         if above_vwap:
-            confidence += 0.10
+            confidence += 0.08
         if above_9ema:
-            confidence += 0.10
+            confidence += 0.06
         if macd_positive:
-            confidence += 0.05
+            confidence += 0.08
+        if macd_slope_up:
+            confidence += 0.04
 
         return PatternResult(
             detected=True,
             pattern_name="BullFlag",
-            confidence=min(confidence, 1.0),
+            confidence=min(confidence, 0.90),  # Cap at 90%
             entry_price=entry_price,
             stop_price=stop_price,
             stop_distance_cents=stop_distance_cents,
@@ -203,6 +210,7 @@ class BullFlag(PatternDetector):
             candle_count=n - pole_start_idx,
             above_vwap=above_vwap,
             macd_positive=macd_positive,
+            macd_slope_up=macd_slope_up,
             volume_confirmation=volume_declining,
             reason="Pattern detected",
             details={

@@ -39,9 +39,9 @@ class VWAPBreak(PatternDetector):
             "volume_spike_on_break": 2.0,  # 2x average volume
             "close_above_vwap": True,  # Candle must close above VWAP
 
-            # VWAP Hold variant
+            # VWAP Hold variant (disabled - cannot reach 80% confidence gate)
             "vwap_hold_variant": {
-                "enabled": True,
+                "enabled": False,
                 "pullback_to_vwap": True,
                 "holds_as_support": True,
                 "entry": "first_green_after_hold",
@@ -141,20 +141,27 @@ class VWAPBreak(PatternDetector):
             macd = self.calculate_macd(df["close"])
 
         macd_positive = None
+        macd_slope_up = None
         if macd is not None and "histogram" in macd.columns and len(macd) == n:
             macd_positive = macd.iloc[-1]["histogram"] > 0
+            # 3-bar MACD slope: compare current MACD line to 3 bars ago
+            if "macd" in macd.columns and len(macd) >= 4:
+                macd_slope_up = macd.iloc[-1]["macd"] > macd.iloc[-4]["macd"]
 
-        # Calculate confidence
+        # Calculate confidence (standardized system)
+        # Base: 65%, Cap: 90%, Gate: 80% (enforced in trade_engine)
         confidence = 0.65  # Base confidence
         if volume_spike:
-            confidence += 0.20
+            confidence += 0.10
         if macd_positive:
-            confidence += 0.15
+            confidence += 0.08
+        if macd_slope_up:
+            confidence += 0.04
 
         return PatternResult(
             detected=True,
             pattern_name="VWAPBreak",
-            confidence=min(confidence, 1.0),
+            confidence=min(confidence, 0.90),  # Cap at 90%
             entry_price=entry_price,
             stop_price=stop_price,
             stop_distance_cents=stop_distance_cents,
@@ -163,6 +170,7 @@ class VWAPBreak(PatternDetector):
             candle_count=n - below_start_idx,
             above_vwap=True,  # By definition
             macd_positive=macd_positive,
+            macd_slope_up=macd_slope_up,
             volume_confirmation=volume_spike,
             reason="VWAP Break detected",
             details={
@@ -313,15 +321,25 @@ class VWAPBreak(PatternDetector):
             macd = self.calculate_macd(df["close"])
 
         macd_positive = None
+        macd_slope_up = None
         if macd is not None and "histogram" in macd.columns and len(macd) == n:
             macd_positive = macd.iloc[-1]["histogram"] > 0
+            # 3-bar MACD slope: compare current MACD line to 3 bars ago
+            if "macd" in macd.columns and len(macd) >= 4:
+                macd_slope_up = macd.iloc[-1]["macd"] > macd.iloc[-4]["macd"]
 
-        confidence = 0.70  # Higher confidence for hold pattern
+        # Calculate confidence (standardized system)
+        # Base: 65%, Cap: 90%, Gate: 80% (enforced in trade_engine)
+        confidence = 0.65  # Base confidence (hold pattern starts same as others)
+        if macd_positive:
+            confidence += 0.08
+        if macd_slope_up:
+            confidence += 0.04
 
         return PatternResult(
             detected=True,
             pattern_name="VWAPHold",
-            confidence=confidence,
+            confidence=min(confidence, 0.90),  # Cap at 90%
             entry_price=entry_price,
             stop_price=stop_price,
             stop_distance_cents=stop_distance_cents,
@@ -330,6 +348,7 @@ class VWAPBreak(PatternDetector):
             candle_count=n - hold_result["touch_idx"],
             above_vwap=True,
             macd_positive=macd_positive,
+            macd_slope_up=macd_slope_up,
             volume_confirmation=None,
             reason="VWAP Hold pattern detected",
             details={
