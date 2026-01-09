@@ -61,11 +61,31 @@ class OpeningRangeRetest(PatternDetector):
             "min_opening_volume": 0,
             "opening_volume_minutes": 15,
 
-            # Clean handle requirement: at least one bar in the "handle" (between breakout
-            # and retest) must be completely above/below OR level.
-            # For longs: low > OR high. For shorts: high < OR low.
-            # This filters weak setups that wick through OR and immediately reverse.
-            "require_clean_breakout_bar": False,
+            # Handle quality scoring (replaces binary clean handle filter)
+            # Scores conviction of breakout before retest - higher = better setup
+            "handle_scoring_enabled": True,
+            "handle_score_threshold": 2,  # Minimum score to take trade
+
+            # Scoring weights:
+            # +2 if breakout bar closes above ORH (strong acceptance)
+            # +1 for each handle bar that closes above ORH
+            # -1 for each handle bar that closes below ORH
+            # +1 if retest holds within buffer and reclaims
+            "score_breakout_close": 2,
+            "score_handle_close_above": 1,
+            "score_handle_close_below": -1,
+            "score_retest_reclaim": 1,
+
+            # Buffer for OR level (fixes micro-wick false rejects)
+            # Uses: max(min_buffer_cents, buffer_pct * price, buffer_atr_mult * ATR)
+            "or_buffer_min_cents": 1,      # Minimum 1 cent buffer
+            "or_buffer_pct": 0.0005,       # 0.05% of price
+            "or_buffer_atr_mult": 0.1,     # 0.1 * ATR(1min)
+
+            # Body-based clean bar (alternative to full bar above)
+            # If True: open >= ORH and close >= ORH (wick below allowed)
+            # If False: entire bar (low) must be above ORH
+            "use_body_above_rule": True,
         }
 
     def detect(
@@ -216,25 +236,24 @@ class OpeningRangeRetest(PatternDetector):
             if direction == "short" and close >= or_high:
                 return self.not_detected("Breakout invalidated: price broke above OR high before entry")
 
-        # Check for clean handle (at least one bar completely above/below OR level)
-        # between breakout and retest. This ensures real follow-through before pullback,
-        # not just a wick through OR that immediately reverses.
-        if self.config.get("require_clean_breakout_bar", True):
-            clean_bar_found = False
-            # Check bars AFTER breakout (the "handle" before retest)
-            handle_bars = df_day.iloc[breakout_idx + 1:]  # Skip breakout bar itself
-            for _, row in handle_bars.iterrows():
-                if direction == "long" and row["low"] > or_high:
-                    # Entire bar above OR high = real follow-through in handle
-                    clean_bar_found = True
-                    break
-                if direction == "short" and row["high"] < or_low:
-                    # Entire bar below OR low = real follow-through in handle
-                    clean_bar_found = True
-                    break
-            if not clean_bar_found:
+        # Handle quality scoring (replaces binary clean handle filter)
+        # Scores conviction level based on closes, not just wicks
+        handle_score = 0
+        handle_reason = ""
+        if self.config.get("handle_scoring_enabled", True):
+            # Calculate buffer to avoid micro-wick false rejects
+            or_level = or_high if direction == "long" else or_low
+            buffer = self._calculate_or_buffer(df_day, or_level)
+
+            # Score the handle quality
+            handle_score, handle_reason = self._score_handle_quality(
+                df_day, breakout_idx, or_high, or_low, direction, buffer
+            )
+
+            threshold = self.config.get("handle_score_threshold", 2)
+            if handle_score < threshold:
                 return self.not_detected(
-                    f"No clean handle: need bar completely {'above OR high' if direction == 'long' else 'below OR low'} before retest"
+                    f"Handle score {handle_score} < {threshold} ({handle_reason})"
                 )
 
         # Retest zone
@@ -331,6 +350,8 @@ class OpeningRangeRetest(PatternDetector):
                 "displacement": disp_threshold,
                 "retest_zone_low": zone_low,
                 "retest_zone_high": zone_high,
+                "handle_score": handle_score,
+                "handle_reason": handle_reason,
             },
         )
 
@@ -353,6 +374,122 @@ class OpeningRangeRetest(PatternDetector):
         if direction == "long":
             return slope > 0
         return slope < 0
+
+    def _calculate_or_buffer(self, df: pd.DataFrame, or_level: float) -> float:
+        """
+        Calculate buffer for OR level to avoid micro-wick false rejects.
+
+        Buffer = max(min_cents, pct * price, atr_mult * ATR)
+        """
+        min_cents = self.config.get("or_buffer_min_cents", 1) / 100
+        pct_buffer = or_level * self.config.get("or_buffer_pct", 0.0005)
+
+        # Calculate 1-min ATR if we have enough bars
+        atr_buffer = 0
+        if len(df) >= 14:
+            high_low = df["high"] - df["low"]
+            atr = high_low.rolling(14).mean().iloc[-1]
+            atr_buffer = atr * self.config.get("or_buffer_atr_mult", 0.1)
+
+        return max(min_cents, pct_buffer, atr_buffer)
+
+    def _score_handle_quality(
+        self,
+        df_day: pd.DataFrame,
+        breakout_idx: int,
+        or_high: float,
+        or_low: float,
+        direction: str,
+        buffer: float,
+    ) -> tuple[int, str]:
+        """
+        Score the quality of the handle (bars between breakout and retest).
+
+        Scoring (for longs, reverse for shorts):
+        +2 if breakout bar closes above ORH (strong acceptance)
+        +1 for each handle bar with close above ORH
+        -1 for each handle bar with close below ORH
+        +1 if retest bar reclaims level after pullback
+
+        Uses buffer to avoid micro-wick false penalties.
+        Uses body-above rule if configured (allows wicks).
+
+        Returns:
+            (score, reason_string)
+        """
+        score = 0
+        reasons = []
+
+        breakout_bar = df_day.iloc[breakout_idx]
+        handle_bars = df_day.iloc[breakout_idx + 1:-1] if len(df_day) > breakout_idx + 2 else pd.DataFrame()
+        retest_bar = df_day.iloc[-1] if len(df_day) > breakout_idx + 1 else None
+
+        use_body = self.config.get("use_body_above_rule", True)
+        or_level = or_high if direction == "long" else or_low
+        buffered_level = or_level + buffer if direction == "long" else or_level - buffer
+
+        # Score breakout bar close
+        if direction == "long":
+            if breakout_bar["close"] >= or_level:
+                score += self.config.get("score_breakout_close", 2)
+                reasons.append(f"breakout close ${breakout_bar['close']:.2f} >= ORH")
+        else:
+            if breakout_bar["close"] <= or_level:
+                score += self.config.get("score_breakout_close", 2)
+                reasons.append(f"breakout close ${breakout_bar['close']:.2f} <= ORL")
+
+        # Score handle bars
+        closes_above = 0
+        closes_below = 0
+
+        for _, row in handle_bars.iterrows():
+            if direction == "long":
+                # Check if bar "holds" above level
+                if use_body:
+                    # Body above: open and close both above (with buffer tolerance)
+                    bar_above = row["open"] >= (or_level - buffer) and row["close"] >= (or_level - buffer)
+                else:
+                    # Full bar above: low above level
+                    bar_above = row["low"] >= (or_level - buffer)
+
+                if row["close"] >= or_level:
+                    closes_above += 1
+                elif row["close"] < (or_level - buffer):
+                    closes_below += 1
+            else:
+                # Short direction
+                if use_body:
+                    bar_below = row["open"] <= (or_level + buffer) and row["close"] <= (or_level + buffer)
+                else:
+                    bar_below = row["high"] <= (or_level + buffer)
+
+                if row["close"] <= or_level:
+                    closes_above += 1  # "above" means favorable for the direction
+                elif row["close"] > (or_level + buffer):
+                    closes_below += 1
+
+        score += closes_above * self.config.get("score_handle_close_above", 1)
+        score += closes_below * self.config.get("score_handle_close_below", -1)
+
+        if closes_above > 0:
+            reasons.append(f"{closes_above} handle bar(s) closed favorable")
+        if closes_below > 0:
+            reasons.append(f"{closes_below} handle bar(s) closed unfavorable")
+
+        # Score retest reclaim
+        if retest_bar is not None:
+            if direction == "long":
+                # Pulled back then reclaimed: low touched zone, close back above
+                if retest_bar["close"] >= or_level and retest_bar["low"] < or_level:
+                    score += self.config.get("score_retest_reclaim", 1)
+                    reasons.append("retest reclaimed ORH")
+            else:
+                if retest_bar["close"] <= or_level and retest_bar["high"] > or_level:
+                    score += self.config.get("score_retest_reclaim", 1)
+                    reasons.append("retest reclaimed ORL")
+
+        reason_str = "; ".join(reasons) if reasons else "no scoring factors"
+        return score, reason_str
 
     def check_exit_signals(
         self,
