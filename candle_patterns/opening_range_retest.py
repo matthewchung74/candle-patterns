@@ -65,7 +65,7 @@ class OpeningRangeRetest(PatternDetector):
             # and retest) must be completely above/below OR level.
             # For longs: low > OR high. For shorts: high < OR low.
             # This filters weak setups that wick through OR and immediately reverse.
-            "require_clean_breakout_bar": True,
+            "require_clean_breakout_bar": False,
         }
 
     def detect(
