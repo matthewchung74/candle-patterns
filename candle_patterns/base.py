@@ -7,6 +7,7 @@ Abstract base class for all pattern detectors.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 import pandas as pd
 
@@ -96,16 +97,19 @@ class PatternDetector(ABC):
     - volume: int/float
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: Optional[Dict[str, Any]] = None,
+                 exit_config: Optional[Dict[str, Any]] = None):
         """
         Initialize pattern detector with optional config overrides.
 
         Args:
             config: Dictionary of pattern-specific parameters
+            exit_config: Pattern-specific exit/trailing stop configuration
         """
         self.config = self.default_config()
         if config:
             self.config.update(config)
+        self.exit_config = exit_config  # Pattern-specific exit config (or None for global)
 
     @abstractmethod
     def default_config(self) -> Dict[str, Any]:
@@ -231,6 +235,9 @@ class PatternDetector(ABC):
         entry_idx: int,
         entry_price: float,
         stop_price: float,
+        direction: str = "long",
+        current_time: Optional[datetime] = None,
+        details: Optional[Dict[str, Any]] = None,
     ) -> List[ExitSignal]:
         """
         Check for exit/invalidation signals after entry.
@@ -242,6 +249,9 @@ class PatternDetector(ABC):
             entry_idx: Index of the entry bar
             entry_price: Price at which position was entered
             stop_price: Stop loss price
+            direction: "long" or "short"
+            current_time: Current bar time (for time-based exits)
+            details: Pattern-specific details (e.g., OR levels for ORB)
 
         Returns:
             List of ExitSignal objects (empty if no exits triggered)
@@ -256,52 +266,64 @@ class PatternDetector(ABC):
         # Check bars after entry
         post_entry = df.iloc[entry_idx + 1:]
 
-        # 1. Stop hit check
-        stop_signal = self._check_stop_hit(post_entry, stop_price)
+        # 1. Stop hit check (direction-aware)
+        stop_signal = self._check_stop_hit(post_entry, stop_price, direction)
         if stop_signal:
             signals.append(stop_signal)
 
-        # 2. MACD bearish crossover
-        macd_signal = self._check_macd_cross(df, entry_idx)
+        # 2. MACD crossover (direction-aware)
+        macd_signal = self._check_macd_cross(df, entry_idx, direction)
         if macd_signal:
             signals.append(macd_signal)
 
-        # 3. Volume decline (weakness)
+        # 3. Volume decline (weakness) - applies to both directions
         vol_signal = self._check_volume_decline(df, entry_idx)
         if vol_signal:
             signals.append(vol_signal)
 
-        # 4. Jackknife rejection
-        jackknife_signal = self._check_jackknife(post_entry)
-        if jackknife_signal:
-            signals.append(jackknife_signal)
+        # 4. Jackknife/Bottoming rejection (direction-aware)
+        rejection_signal = self._check_rejection(post_entry, direction)
+        if rejection_signal:
+            signals.append(rejection_signal)
 
-        # 5. Topping tail (shooting star)
-        topping_signal = self._check_topping_tail(post_entry, entry_price)
-        if topping_signal:
-            signals.append(topping_signal)
+        # 5. Topping/Bottoming tail (direction-aware)
+        tail_signal = self._check_reversal_tail(post_entry, entry_price, direction)
+        if tail_signal:
+            signals.append(tail_signal)
 
         return signals
 
     def _check_stop_hit(
-        self, post_entry: pd.DataFrame, stop_price: float
+        self, post_entry: pd.DataFrame, stop_price: float, direction: str = "long"
     ) -> Optional[ExitSignal]:
-        """Check if price hit stop loss."""
+        """Check if price hit stop loss (direction-aware)."""
         for idx, row in post_entry.iterrows():
-            if row["low"] <= stop_price:
-                return ExitSignal(
-                    signal_type="stop_hit",
-                    triggered=True,
-                    reason=f"Stop loss hit: low {row['low']:.2f} <= stop {stop_price:.2f}",
-                    bar_idx=idx,
-                    price=stop_price,
-                )
+            if direction == "short":
+                # Shorts: stop hit when price goes UP through stop
+                if row["high"] >= stop_price:
+                    return ExitSignal(
+                        signal_type="stop_hit",
+                        triggered=True,
+                        reason=f"Stop loss hit: high {row['high']:.2f} >= stop {stop_price:.2f}",
+                        bar_idx=idx,
+                        price=stop_price,
+                    )
+            else:
+                # Longs: stop hit when price goes DOWN through stop
+                if row["low"] <= stop_price:
+                    return ExitSignal(
+                        signal_type="stop_hit",
+                        triggered=True,
+                        reason=f"Stop loss hit: low {row['low']:.2f} <= stop {stop_price:.2f}",
+                        bar_idx=idx,
+                        price=stop_price,
+                    )
         return None
 
     def _check_macd_cross(
-        self, df: pd.DataFrame, entry_idx: int
+        self, df: pd.DataFrame, entry_idx: int, direction: str = "long"
     ) -> Optional[ExitSignal]:
-        """Check for bearish MACD crossover (MACD crosses below signal)."""
+        """Check for adverse MACD crossover (direction-aware)."""
         macd = self.calculate_macd(df["close"])
         if macd is None:
             return None
@@ -319,15 +341,26 @@ class PatternDetector(ABC):
             curr_macd = macd.iloc[i]["macd"]
             curr_signal = macd.iloc[i]["signal"]
 
-            # Bearish cross: MACD was above signal, now below
-            if prev_macd >= prev_signal and curr_macd < curr_signal:
-                return ExitSignal(
-                    signal_type="macd_cross",
-                    triggered=True,
-                    reason="MACD crossed below signal line (bearish)",
-                    bar_idx=i,
-                    price=df.iloc[i]["close"],
-                )
+            if direction == "short":
+                # For shorts: bullish cross is adverse (MACD crosses above signal)
+                if prev_macd <= prev_signal and curr_macd > curr_signal:
+                    return ExitSignal(
+                        signal_type="macd_cross",
+                        triggered=True,
+                        reason="MACD crossed above signal line (bullish - adverse for short)",
+                        bar_idx=i,
+                        price=df.iloc[i]["close"],
+                    )
+            else:
+                # For longs: bearish cross is adverse (MACD crosses below signal)
+                if prev_macd >= prev_signal and curr_macd < curr_signal:
+                    return ExitSignal(
+                        signal_type="macd_cross",
+                        triggered=True,
+                        reason="MACD crossed below signal line (bearish)",
+                        bar_idx=i,
+                        price=df.iloc[i]["close"],
+                    )
         return None
 
     def _check_volume_decline(
@@ -360,14 +393,17 @@ class PatternDetector(ABC):
             )
         return None
 
-    def _check_jackknife(
-        self, post_entry: pd.DataFrame
+    def _check_rejection(
+        self, post_entry: pd.DataFrame, direction: str = "long"
     ) -> Optional[ExitSignal]:
         """
-        Check for jackknife rejection pattern.
+        Check for rejection pattern (direction-aware).
 
-        Jackknife: Price makes new high then reverses sharply,
+        For longs (jackknife): Price makes new high then reverses sharply,
         closing below the prior candle's low. Sign of trapped buyers.
+
+        For shorts (bottoming): Price makes new low then reverses sharply,
+        closing above the prior candle's high. Sign of trapped sellers.
         """
         if len(post_entry) < 2:
             return None
@@ -376,35 +412,55 @@ class PatternDetector(ABC):
             curr = post_entry.iloc[i]
             prev = post_entry.iloc[i - 1]
 
-            # Jackknife conditions:
-            # 1. Current bar made a higher high (new high attempt)
-            # 2. Current bar closes below prior bar's low (sharp rejection)
-            # 3. Current bar is red (close < open)
-            made_new_high = curr["high"] > prev["high"]
-            closes_below_prior_low = curr["close"] < prev["low"]
-            is_red = curr["close"] < curr["open"]
+            if direction == "short":
+                # Bottoming rejection (adverse for shorts):
+                # 1. Current bar made a lower low (new low attempt)
+                # 2. Current bar closes above prior bar's high (sharp rejection)
+                # 3. Current bar is green (close > open)
+                made_new_low = curr["low"] < prev["low"]
+                closes_above_prior_high = curr["close"] > prev["high"]
+                is_green = curr["close"] > curr["open"]
 
-            if made_new_high and closes_below_prior_low and is_red:
-                return ExitSignal(
-                    signal_type="jackknife",
-                    triggered=True,
-                    reason=f"Jackknife rejection: new high {curr['high']:.2f} then closed below prior low {prev['low']:.2f}",
-                    bar_idx=post_entry.index[i],
-                    price=curr["close"],
-                )
+                if made_new_low and closes_above_prior_high and is_green:
+                    return ExitSignal(
+                        signal_type="bottoming_rejection",
+                        triggered=True,
+                        reason=f"Bottoming rejection: new low {curr['low']:.2f} then closed above prior high {prev['high']:.2f}",
+                        bar_idx=post_entry.index[i],
+                        price=curr["close"],
+                    )
+            else:
+                # Jackknife rejection (adverse for longs):
+                # 1. Current bar made a higher high (new high attempt)
+                # 2. Current bar closes below prior bar's low (sharp rejection)
+                # 3. Current bar is red (close < open)
+                made_new_high = curr["high"] > prev["high"]
+                closes_below_prior_low = curr["close"] < prev["low"]
+                is_red = curr["close"] < curr["open"]
+
+                if made_new_high and closes_below_prior_low and is_red:
+                    return ExitSignal(
+                        signal_type="jackknife",
+                        triggered=True,
+                        reason=f"Jackknife rejection: new high {curr['high']:.2f} then closed below prior low {prev['low']:.2f}",
+                        bar_idx=post_entry.index[i],
+                        price=curr["close"],
+                    )
         return None
 
-    def _check_topping_tail(
-        self, post_entry: pd.DataFrame, entry_price: float
+    def _check_reversal_tail(
+        self, post_entry: pd.DataFrame, entry_price: float, direction: str = "long"
     ) -> Optional[ExitSignal]:
         """
-        Check for topping tail (shooting star) pattern.
+        Check for reversal tail pattern (direction-aware).
 
-        Topping tail indicates rejection at highs - sellers pushing price down.
-        Conditions:
-        1. Upper wick >= 2x the body size
-        2. Body in lower third of candle range
-        3. Price is above entry (we're in profit, this is a warning)
+        For longs (topping tail/shooting star): Long upper wick, body in lower third.
+        Indicates rejection at highs - sellers pushing price down.
+
+        For shorts (bottoming tail/hammer): Long lower wick, body in upper third.
+        Indicates rejection at lows - buyers pushing price up.
+
+        Only triggers when in profit (warning of potential reversal).
         """
         if len(post_entry) < 1:
             return None
@@ -422,6 +478,7 @@ class PatternDetector(ABC):
             body_bottom = min(open_price, close)
             body_size = body_top - body_bottom
             upper_wick = high - body_top
+            lower_wick = body_bottom - low
             candle_range = high - low
 
             # Skip if no range (doji-like with no movement)
@@ -432,26 +489,43 @@ class PatternDetector(ABC):
             if body_size < 0.005:
                 body_size = 0.005  # Prevent division by zero
 
-            # Topping tail conditions:
-            # 1. Upper wick at least 2x the body
-            # 2. Body in lower 1/3 of candle (close near low)
-            # 3. Price above entry (in profit territory)
-            upper_wick_ratio = upper_wick / body_size
-            body_position = (body_bottom - low) / candle_range  # 0 = body at bottom, 1 = body at top
+            if direction == "short":
+                # Bottoming tail (adverse for shorts): long lower wick, body in upper third
+                lower_wick_ratio = lower_wick / body_size
+                body_position = (body_bottom - low) / candle_range  # 0 = body at bottom, 1 = body at top
 
-            is_topping_tail = (
-                upper_wick_ratio >= 2.0 and      # Long upper wick
-                body_position <= 0.33 and         # Body in lower third
-                close > entry_price               # We're in profit
-            )
-
-            if is_topping_tail:
-                return ExitSignal(
-                    signal_type="topping_tail",
-                    triggered=True,
-                    reason=f"Topping tail: upper wick {upper_wick:.2f} ({upper_wick_ratio:.1f}x body), rejection at {high:.2f}",
-                    bar_idx=post_entry.index[i],
-                    price=close,
+                is_bottoming_tail = (
+                    lower_wick_ratio >= 2.0 and      # Long lower wick
+                    body_position >= 0.67 and         # Body in upper third
+                    close < entry_price               # We're in profit (price below entry for shorts)
                 )
+
+                if is_bottoming_tail:
+                    return ExitSignal(
+                        signal_type="bottoming_tail",
+                        triggered=True,
+                        reason=f"Bottoming tail: lower wick {lower_wick:.2f} ({lower_wick_ratio:.1f}x body), rejection at {low:.2f}",
+                        bar_idx=post_entry.index[i],
+                        price=close,
+                    )
+            else:
+                # Topping tail (adverse for longs): long upper wick, body in lower third
+                upper_wick_ratio = upper_wick / body_size
+                body_position = (body_bottom - low) / candle_range
+
+                is_topping_tail = (
+                    upper_wick_ratio >= 2.0 and      # Long upper wick
+                    body_position <= 0.33 and         # Body in lower third
+                    close > entry_price               # We're in profit
+                )
+
+                if is_topping_tail:
+                    return ExitSignal(
+                        signal_type="topping_tail",
+                        triggered=True,
+                        reason=f"Topping tail: upper wick {upper_wick:.2f} ({upper_wick_ratio:.1f}x body), rejection at {high:.2f}",
+                        bar_idx=post_entry.index[i],
+                        price=close,
+                    )
 
         return None

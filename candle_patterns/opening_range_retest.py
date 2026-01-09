@@ -60,6 +60,12 @@ class OpeningRangeRetest(PatternDetector):
             # Liquidity filter (first N minutes volume)
             "min_opening_volume": 0,
             "opening_volume_minutes": 15,
+
+            # Clean handle requirement: at least one bar in the "handle" (between breakout
+            # and retest) must be completely above/below OR level.
+            # For longs: low > OR high. For shorts: high < OR low.
+            # This filters weak setups that wick through OR and immediately reverse.
+            "require_clean_breakout_bar": True,
         }
 
     def detect(
@@ -148,7 +154,7 @@ class OpeningRangeRetest(PatternDetector):
         for idx in range(len(df_day)):
             row = df_day.iloc[idx]
             ts = row["ts_et"]
-            if ts <= or_end or ts > window_end:
+            if ts < or_end or ts > window_end:
                 continue
 
             prev = df_day.iloc[idx - 1] if idx > 0 else None
@@ -195,6 +201,42 @@ class OpeningRangeRetest(PatternDetector):
             if not trend_ok:
                 return self.not_detected("Trend alignment failed")
 
+        # Check for breakout invalidation: if price EVER broke opposite side, setup is invalid
+        # For LONG breakout: invalidate if any close broke below OR low (anytime after OR formed)
+        # For SHORT breakout: invalidate if any close broke above OR high (anytime after OR formed)
+        # Bug fix: Check ALL bars after OR formation, not just after breakout candle
+        # This catches cases like TQQQ Jan 2, 2026 where price broke OR low at 9:39-9:40
+        # BEFORE breaking above OR high at 9:47
+        or_end_idx = len(or_bars)  # First bar after OR formation
+        post_or_bars = df_day.iloc[or_end_idx:]
+        for _, row in post_or_bars.iterrows():
+            close = row["close"]
+            if direction == "long" and close <= or_low:
+                return self.not_detected("Breakout invalidated: price broke below OR low before entry")
+            if direction == "short" and close >= or_high:
+                return self.not_detected("Breakout invalidated: price broke above OR high before entry")
+
+        # Check for clean handle (at least one bar completely above/below OR level)
+        # between breakout and retest. This ensures real follow-through before pullback,
+        # not just a wick through OR that immediately reverses.
+        if self.config.get("require_clean_breakout_bar", True):
+            clean_bar_found = False
+            # Check bars AFTER breakout (the "handle" before retest)
+            handle_bars = df_day.iloc[breakout_idx + 1:]  # Skip breakout bar itself
+            for _, row in handle_bars.iterrows():
+                if direction == "long" and row["low"] > or_high:
+                    # Entire bar above OR high = real follow-through in handle
+                    clean_bar_found = True
+                    break
+                if direction == "short" and row["high"] < or_low:
+                    # Entire bar below OR low = real follow-through in handle
+                    clean_bar_found = True
+                    break
+            if not clean_bar_found:
+                return self.not_detected(
+                    f"No clean handle: need bar completely {'above OR high' if direction == 'long' else 'below OR low'} before retest"
+                )
+
         # Retest zone
         zone_size = or_range * self.config["retest_zone_or_pct"]
         if direction == "long":
@@ -215,12 +257,50 @@ class OpeningRangeRetest(PatternDetector):
         if last_bar["ts_et"] <= breakout_time:
             return self.not_detected("Waiting for retest")
 
-        retest_hit = (last_bar["low"] <= zone_high) and (last_bar["high"] >= zone_low)
-        if not retest_hit:
-            return self.not_detected("No retest in zone")
+        # Check for actual pullback to retest zone AFTER breakout
+        # Bug fix: Previously the zone was calculated but never validated
+        # For LONG: price must pull back INTO the retest zone (low touches zone)
+        # For SHORT: price must pull back INTO the retest zone (high touches zone)
+        post_breakout = df_day.iloc[breakout_idx + 1:]
+        pullback_found = False
+
+        for _, row in post_breakout.iterrows():
+            if direction == "long":
+                # For longs: check if bar's low reached into the retest zone
+                # Zone is centered around OR high: zone_low to zone_high
+                if row["low"] <= zone_high:
+                    pullback_found = True
+                    break
+            else:
+                # For shorts: check if bar's high reached into the retest zone
+                # Zone is centered around OR low: zone_low to zone_high
+                if row["high"] >= zone_low:
+                    pullback_found = True
+                    break
+
+        if not pullback_found:
+            return self.not_detected(f"No retest: price never pulled back to zone (${zone_low:.2f}-${zone_high:.2f})")
+
+        # Retest confirmation: after pullback, price must reclaim the OR level
+        # For LONG: bar's high must be above OR high AND bar must be bullish (green)
+        # For SHORT: bar's low must be below OR low AND bar must be bearish (red)
+        if direction == "long":
+            if last_bar["high"] <= or_high:
+                return self.not_detected("No retest: high not above OR high")
+            if last_bar["close"] <= last_bar["open"]:
+                return self.not_detected("No retest: entry bar not bullish")
+        else:
+            if last_bar["low"] >= or_low:
+                return self.not_detected("No retest: low not below OR low")
+            if last_bar["close"] >= last_bar["open"]:
+                return self.not_detected("No retest: entry bar not bearish")
 
         # Build result
-        confidence = 0.70
+        # Base confidence: 75% (displacement + retest)
+        # +10% if FVG found (fair value gap confirms institutional buying/selling)
+        # +5% if confirmed close beyond prior candle
+        # +5% if trend aligned (disabled by default)
+        confidence = 0.75
         if fvg_found:
             confidence += 0.10
         if confirmed:
@@ -280,16 +360,49 @@ class OpeningRangeRetest(PatternDetector):
         entry_idx: int,
         entry_price: float,
         stop_price: float,
+        direction: str = "long",
+        current_time: Optional[datetime] = None,
+        details: Optional[Dict[str, Any]] = None,
     ) -> List[ExitSignal]:
         """
         Check for ORB-specific exit signals.
 
         Exits:
         - Stop hit
+        - 90-min window expiry (11:00 AM ET)
         - Re-entry into opening range by X% of range
         - Opposite breakout beyond the other side of the range
         """
-        signals = super().check_exit_signals(bars, entry_idx, entry_price, stop_price)
+        signals = super().check_exit_signals(
+            bars, entry_idx, entry_price, stop_price, direction,
+            current_time=current_time, details=details
+        )
+
+        # Check 90-min ORB window exit (11:00 AM ET)
+        # Exit 1 min early to allow order fill on next bar (backtest quirk)
+        window_minutes = 90
+        if self.exit_config:
+            window_minutes = self.exit_config.get("window_exit_minutes", 90)
+        exit_buffer_minutes = 1  # Exit 1 min before window expires
+
+        if current_time is not None:
+            et_tz = ZoneInfo("America/New_York")
+            if current_time.tzinfo is None:
+                current_time = current_time.replace(tzinfo=et_tz)
+            else:
+                current_time = current_time.astimezone(et_tz)
+
+            market_open = current_time.replace(hour=9, minute=30, second=0, microsecond=0)
+            minutes_since_open = (current_time - market_open).total_seconds() / 60
+
+            if minutes_since_open >= (window_minutes - exit_buffer_minutes):
+                signals.append(ExitSignal(
+                    signal_type="window_exit",
+                    triggered=True,
+                    reason=f"90-min ORB window expired at {current_time.strftime('%H:%M')}",
+                    price=bars.iloc[-1]["close"] if len(bars) > 0 else None,
+                ))
+                return signals  # Exit immediately on window expiry
 
         if "timestamp" not in bars.columns:
             return signals
