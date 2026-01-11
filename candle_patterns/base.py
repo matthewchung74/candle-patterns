@@ -263,11 +263,13 @@ class PatternDetector(ABC):
         if entry_idx >= n - 1:
             return signals  # Need at least one bar after entry
 
-        # Check bars after entry
+        # Check bars from entry onwards (including entry bar for stop check)
+        # Entry bar itself can violate stop if it gaps down or wicks through
+        post_entry_with_entry = df.iloc[entry_idx:]
         post_entry = df.iloc[entry_idx + 1:]
 
-        # 1. Stop hit check (direction-aware)
-        stop_signal = self._check_stop_hit(post_entry, stop_price, direction)
+        # 1. Stop hit check (direction-aware) - includes entry bar
+        stop_signal = self._check_stop_hit(post_entry_with_entry, stop_price, direction)
         if stop_signal:
             signals.append(stop_signal)
 

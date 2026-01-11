@@ -48,8 +48,8 @@ class OpeningRangeRetest(PatternDetector):
             # One-shot rule: only first valid retest
             "one_shot": True,
 
-            # Stop buffer
-            "stop_buffer_cents": 10,
+            # Stop buffer (widened from 10 to 15 for volatile ETFs)
+            "stop_buffer_cents": 15,
 
             # Trend alignment (5-min EMA slope)
             "trend_alignment": True,
@@ -65,7 +65,36 @@ class OpeningRangeRetest(PatternDetector):
             # and retest) must be completely above/below OR level.
             # For longs: low > OR high. For shorts: high < OR low.
             # This filters weak setups that wick through OR and immediately reverse.
+            # NOTE: Disabled for now - test impact separately
             "require_clean_breakout_bar": False,
+
+            # Same-side fakeout filter: if price closes back inside OR after breakout
+            # and before retest, invalidate the setup
+            # NOTE: Disabled by default - aggressive filter, may reduce valid signals
+            "fakeout_filter": False,
+            "fakeout_bars": 2,  # Legacy fallback (now check all bars to retest)
+
+            # Choppy filter: reject if pre-breakout bars show consolidation
+            # Triggers if 2 of 3 conditions met:
+            # (a) body_pct < 40% for >= 60% of bars
+            # (b) alternating colors >= 50% of bars
+            # (c) net drift from OR mid < 20% of OR range
+            # NOTE: Tested - hurts P&L, kept disabled
+            "choppy_filter": False,
+            "choppy_lookback_bars": 6,  # 5-8 bars before breakout
+            "choppy_small_body_pct": 40.0,
+            "choppy_small_body_ratio": 0.60,  # 60% of bars must have small bodies
+            "choppy_alternating_ratio": 0.50,  # 50% alternating colors
+            "choppy_drift_pct": 0.20,  # Net drift < 20% of OR range
+
+            # Confirmation quality: entry bar must show strong rejection
+            # Either hammer-like (lower_wick >= 2x body, upper_wick <= body)
+            # Or strong bullish (body >= 60%, close > ORH + 0.1*OR range)
+            # NOTE: Disabled - too aggressive, filters many valid entries
+            "confirmation_filter": False,
+            "confirm_hammer_wick_ratio": 2.0,  # lower_wick >= 2x body
+            "confirm_strong_body_pct": 60.0,
+            "confirm_strong_close_buffer": 0.10,  # close > ORH + 10% of OR range
         }
 
     def detect(
@@ -195,6 +224,62 @@ class OpeningRangeRetest(PatternDetector):
         if breakout_idx is None:
             return self.not_detected("No displacement breakout")
 
+        # Same-side fakeout filter: check ALL bars after breakout until retest bar
+        if self.config.get("fakeout_filter", False):
+            # Legacy fakeout_bars retained for compatibility, but we scan all bars
+            for i in range(breakout_idx + 1, len(df_day)):
+                check_bar = df_day.iloc[i]
+                bars_after_breakout = i - breakout_idx
+                if direction == "long" and check_bar["close"] < or_high:
+                    return self.not_detected(
+                        f"Same-side fakeout: bar {bars_after_breakout} closed below ORH"
+                    )
+                if direction == "short" and check_bar["close"] > or_low:
+                    return self.not_detected(
+                        f"Same-side fakeout: bar {bars_after_breakout} closed above ORL"
+                    )
+
+        # Choppy filter: reject if pre-breakout bars show consolidation
+        if self.config.get("choppy_filter", False):
+            lookback = self.config.get("choppy_lookback_bars", 6)
+            or_end_idx = len(or_bars)  # First bar after OR formation
+            start_idx = max(or_end_idx, breakout_idx - lookback)
+            pre_breakout = df_day.iloc[start_idx:breakout_idx]
+
+            if len(pre_breakout) >= 2:  # Need at least 2 bars to assess
+                # Condition (a): small bodies
+                small_body_pct = self.config.get("choppy_small_body_pct", 40.0)
+                small_body_count = sum(
+                    1 for _, bar in pre_breakout.iterrows()
+                    if self.candle_body_pct(bar) < small_body_pct
+                )
+                small_body_ratio = small_body_count / len(pre_breakout)
+                cond_a = small_body_ratio >= self.config.get("choppy_small_body_ratio", 0.60)
+
+                # Condition (b): alternating colors
+                colors = [bar["close"] > bar["open"] for _, bar in pre_breakout.iterrows()]
+                alternating_count = sum(
+                    1 for i in range(1, len(colors)) if colors[i] != colors[i-1]
+                )
+                alternating_ratio = alternating_count / max(1, len(colors) - 1)
+                cond_b = alternating_ratio >= self.config.get("choppy_alternating_ratio", 0.50)
+
+                # Condition (c): low drift from OR mid
+                or_mid = (or_high + or_low) / 2
+                first_close = pre_breakout.iloc[0]["close"]
+                last_close = pre_breakout.iloc[-1]["close"]
+                drift = abs(last_close - first_close)
+                drift_ratio = drift / or_range if or_range > 0 else 0
+                cond_c = drift_ratio < self.config.get("choppy_drift_pct", 0.20)
+
+                # 2 of 3 conditions = choppy
+                chop_count = sum([cond_a, cond_b, cond_c])
+                if chop_count >= 2:
+                    return self.not_detected(
+                        f"Choppy pre-breakout: {chop_count}/3 conditions "
+                        f"(small_body={cond_a}, alternating={cond_b}, low_drift={cond_c})"
+                    )
+
         # Trend alignment (5-min EMA slope)
         if self.config.get("trend_alignment", False):
             trend_ok = self._trend_alignment_ok(df_day, direction)
@@ -294,6 +379,55 @@ class OpeningRangeRetest(PatternDetector):
                 return self.not_detected("No retest: low not below OR low")
             if last_bar["close"] >= last_bar["open"]:
                 return self.not_detected("No retest: entry bar not bearish")
+
+        # Confirmation quality filter: entry bar must show strong rejection
+        if self.config.get("confirmation_filter", False):
+            bar_range = last_bar["high"] - last_bar["low"]
+            body = abs(last_bar["close"] - last_bar["open"])
+            body_pct = (body / bar_range * 100) if bar_range > 0 else 0
+
+            if direction == "long":
+                lower_wick = min(last_bar["open"], last_bar["close"]) - last_bar["low"]
+                upper_wick = last_bar["high"] - max(last_bar["open"], last_bar["close"])
+
+                # Hammer-like: lower_wick >= 2x body AND upper_wick <= body
+                hammer_ratio = self.config.get("confirm_hammer_wick_ratio", 2.0)
+                is_hammer = (lower_wick >= hammer_ratio * body) and (upper_wick <= body)
+
+                # Strong bullish: body >= 60% AND close > ORH + 0.1*OR range
+                strong_body_pct = self.config.get("confirm_strong_body_pct", 60.0)
+                close_buffer = self.config.get("confirm_strong_close_buffer", 0.10)
+                is_strong = (body_pct >= strong_body_pct) and (last_bar["close"] > or_high + close_buffer * or_range)
+
+                # Valid bullish: body >= 50% AND close > ORH (reclaimed level)
+                is_valid_bullish = (body_pct >= 50.0) and (last_bar["close"] > or_high)
+
+                if not (is_hammer or is_strong or is_valid_bullish):
+                    return self.not_detected(
+                        f"Weak confirmation: not hammer (lower_wick={lower_wick:.3f}, body={body:.3f}) "
+                        f"and not strong (body_pct={body_pct:.1f}%, close={last_bar['close']:.2f})"
+                    )
+            else:
+                upper_wick = last_bar["high"] - max(last_bar["open"], last_bar["close"])
+                lower_wick = min(last_bar["open"], last_bar["close"]) - last_bar["low"]
+
+                # Inverted hammer: upper_wick >= 2x body AND lower_wick <= body
+                hammer_ratio = self.config.get("confirm_hammer_wick_ratio", 2.0)
+                is_hammer = (upper_wick >= hammer_ratio * body) and (lower_wick <= body)
+
+                # Strong bearish: body >= 60% AND close < ORL - 0.1*OR range
+                strong_body_pct = self.config.get("confirm_strong_body_pct", 60.0)
+                close_buffer = self.config.get("confirm_strong_close_buffer", 0.10)
+                is_strong = (body_pct >= strong_body_pct) and (last_bar["close"] < or_low - close_buffer * or_range)
+
+                # Valid bearish: body >= 50% AND close < ORL (reclaimed level)
+                is_valid_bearish = (body_pct >= 50.0) and (last_bar["close"] < or_low)
+
+                if not (is_hammer or is_strong or is_valid_bearish):
+                    return self.not_detected(
+                        f"Weak confirmation: not inv hammer (upper_wick={upper_wick:.3f}, body={body:.3f}) "
+                        f"and not strong (body_pct={body_pct:.1f}%, close={last_bar['close']:.2f})"
+                    )
 
         # Build result
         # Base confidence: 75% (displacement + retest)
