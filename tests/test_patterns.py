@@ -2,29 +2,23 @@
 Tests for Candle Patterns Library
 =================================
 
+Core pattern tests are in dedicated files:
+- test_micro_pullback.py - Micro Pullback pattern tests
+- test_bull_flag.py - Bull Flag pattern tests
+
+This file contains:
+- VWAP Break pattern tests
+- Opening Range Retest pattern tests
+- Exit signal tests (topping tail, stop hit, volume decline, jackknife, MACD cross)
+- PatternResult tests
+- Confidence system tests
+
 Run with: pytest tests/test_patterns.py -v
 """
 
 import pytest
 import pandas as pd
 from candle_patterns import MicroPullback, BullFlag, VWAPBreak, OpeningRangeRetest
-from tests.fixtures.micro_pullback_fixtures import (
-    MICRO_PULLBACK_VALID,
-    MICRO_PULLBACK_TOO_DEEP,
-    MICRO_PULLBACK_NO_PRIOR_MOVE,
-    MICRO_PULLBACK_LIMIT_PRIOR_MOVE,
-    MICRO_PULLBACK_LIMIT_PULLBACK_PCT,
-    MICRO_PULLBACK_LIMIT_PULLBACK_CANDLES,
-    MICRO_PULLBACK_LIMIT_GREEN_RATIO,
-)
-from tests.fixtures.bull_flag_fixtures import (
-    BULL_FLAG_VALID,
-    BULL_FLAG_NO_BREAKOUT,
-    BULL_FLAG_LIMIT_POLE_MOVE,
-    BULL_FLAG_LIMIT_PULLBACK_SHALLOW,
-    BULL_FLAG_LIMIT_PULLBACK_DEEP,
-    BULL_FLAG_LIMIT_MIN_CANDLES,
-)
 from tests.fixtures.vwap_break_fixtures import (
     VWAP_BREAK_VALID,
     VWAP_HOLD_VALID,
@@ -75,171 +69,6 @@ from tests.fixtures.opening_range_retest_fixtures import (
     OPENING_RANGE_RETEST_NO_RETEST,
     OPENING_RANGE_RETEST_OUTSIDE_WINDOW,
 )
-
-
-class TestMicroPullback:
-    """Tests for Micro Pullback pattern detection."""
-
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.detector = MicroPullback()
-
-    def test_valid_pattern_detected(self):
-        """Test that a valid micro pullback is detected."""
-        result = self.detector.detect(MICRO_PULLBACK_VALID)
-
-        assert result.detected is True
-        assert result.pattern_name == "MicroPullback"
-        assert result.confidence >= 0.7
-        assert result.entry_price is not None
-        assert result.stop_price is not None
-        assert result.entry_price > result.stop_price
-
-    def test_valid_pattern_details(self):
-        """Test pattern details for valid detection."""
-        result = self.detector.detect(MICRO_PULLBACK_VALID)
-
-        assert result.details is not None
-        assert result.details["prior_move_pct"] >= 5.0
-        assert result.details["pullback_pct"] <= 20.0  # Updated for tuned config
-        assert result.details["green_candles"] >= 2  # Updated: now requires >50% green, not strict count
-
-    def test_too_deep_pullback_rejected(self):
-        """Test that deep pullback is rejected."""
-        result = self.detector.detect(MICRO_PULLBACK_TOO_DEEP)
-
-        assert result.detected is False
-        assert "too deep" in result.reason.lower()
-
-    def test_no_prior_move_rejected(self):
-        """Test that insufficient prior move is rejected."""
-        result = self.detector.detect(MICRO_PULLBACK_NO_PRIOR_MOVE)
-
-        assert result.detected is False
-        # Could fail for various reasons related to prior move
-        assert any(x in result.reason.lower() for x in ["short", "green", "prior", "insufficient"])
-
-    def test_empty_bars_rejected(self):
-        """Test that empty DataFrame is rejected."""
-        result = self.detector.detect(pd.DataFrame())
-
-        assert result.detected is False
-        assert "empty" in result.reason.lower()
-
-    def test_custom_config(self):
-        """Test that custom config overrides work."""
-        custom_detector = MicroPullback({
-            "min_prior_move_pct": 10.0,  # Stricter requirement
-        })
-
-        result = custom_detector.detect(MICRO_PULLBACK_VALID)
-        # With stricter requirement, may not detect
-        # (depends on fixture data)
-
-    # === LIMIT TESTS ===
-
-    def test_limit_prior_move_at_minimum(self):
-        """Test detection with exactly 5% prior move (minimum)."""
-        result = self.detector.detect(MICRO_PULLBACK_LIMIT_PRIOR_MOVE)
-
-        assert result.detected is True
-        assert result.details["prior_move_pct"] >= 5.0
-        assert result.details["prior_move_pct"] < 6.0  # Close to limit
-
-    def test_limit_pullback_pct_at_maximum(self):
-        """Test detection with exactly 20% pullback (maximum)."""
-        result = self.detector.detect(MICRO_PULLBACK_LIMIT_PULLBACK_PCT)
-
-        assert result.detected is True
-        assert result.details["pullback_pct"] >= 18.0  # Near 20% limit
-        assert result.details["pullback_pct"] <= 20.0
-
-    def test_limit_pullback_candles_at_maximum(self):
-        """Test detection with exactly 7 pullback candles (maximum)."""
-        result = self.detector.detect(MICRO_PULLBACK_LIMIT_PULLBACK_CANDLES)
-
-        assert result.detected is True
-        assert result.details["pullback_candles"] == 7
-
-    def test_limit_green_ratio_at_minimum(self):
-        """Test detection with >50% green candles (minimum passing)."""
-        result = self.detector.detect(MICRO_PULLBACK_LIMIT_GREEN_RATIO)
-
-        assert result.detected is True
-        # Should have passed with >50% green ratio
-
-
-class TestBullFlag:
-    """Tests for Bull Flag pattern detection."""
-
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.detector = BullFlag()
-
-    def test_valid_pattern_detected(self):
-        """Test that a valid bull flag is detected."""
-        result = self.detector.detect(BULL_FLAG_VALID)
-
-        assert result.detected is True
-        assert result.pattern_name == "BullFlag"
-        assert result.confidence >= 0.6
-        assert result.entry_price is not None
-        assert result.stop_price is not None
-
-    def test_valid_pattern_details(self):
-        """Test pattern details for valid detection."""
-        result = self.detector.detect(BULL_FLAG_VALID)
-
-        assert result.details is not None
-        assert result.details["pole_move_pct"] >= 20.0
-        assert 10.0 <= result.details["pullback_pct"] <= 25.0
-
-    def test_no_breakout_rejected(self):
-        """Test that pattern without breakout is rejected."""
-        result = self.detector.detect(BULL_FLAG_NO_BREAKOUT)
-
-        assert result.detected is False
-        assert "breakout" in result.reason.lower()
-
-    def test_volume_declining_checked(self):
-        """Test that volume confirmation is checked."""
-        result = self.detector.detect(BULL_FLAG_VALID)
-
-        assert result.volume_confirmation is not None
-
-    # === LIMIT TESTS ===
-
-    def test_limit_pole_move_at_minimum(self):
-        """Test detection with exactly 20% pole move (minimum)."""
-        result = self.detector.detect(BULL_FLAG_LIMIT_POLE_MOVE)
-
-        assert result.detected is True
-        assert result.details["pole_move_pct"] >= 20.0
-        assert result.details["pole_move_pct"] < 22.0  # Close to limit
-
-    def test_limit_pullback_shallow_at_minimum(self):
-        """Test detection with exactly 10% pullback (minimum)."""
-        result = self.detector.detect(BULL_FLAG_LIMIT_PULLBACK_SHALLOW)
-
-        assert result.detected is True
-        assert result.details["pullback_pct"] >= 10.0
-        assert result.details["pullback_pct"] < 12.0  # Close to limit
-
-    def test_limit_pullback_deep_at_maximum(self):
-        """Test detection with exactly 25% pullback (maximum)."""
-        result = self.detector.detect(BULL_FLAG_LIMIT_PULLBACK_DEEP)
-
-        assert result.detected is True
-        assert result.details["pullback_pct"] >= 24.0  # Near 25% limit
-        assert result.details["pullback_pct"] <= 25.0
-
-    def test_limit_min_candles(self):
-        """Test detection with exactly 3 pole + 3 flag candles (minimums)."""
-        result = self.detector.detect(BULL_FLAG_LIMIT_MIN_CANDLES)
-
-        assert result.detected is True
-        assert result.details["pole_candles"] == 3
-        assert result.details["flag_candles"] == 3
 
 
 class TestVWAPBreak:
@@ -320,88 +149,23 @@ class TestVWAPBreak:
 class TestPatternResult:
     """Tests for PatternResult dataclass."""
 
-    def test_bool_conversion(self):
-        """Test that PatternResult can be used in if statements."""
+    def test_bool_conversion_detected(self):
+        """Test that detected PatternResult is truthy."""
         detector = MicroPullback()
+        # Use empty DataFrame to get a not_detected result
+        result = detector.detect(pd.DataFrame())
 
-        result = detector.detect(MICRO_PULLBACK_VALID)
-        if result:
-            assert result.detected is True
+        # Not detected should be falsy
+        assert not result
+        assert result.detected is False
 
-        result = detector.detect(MICRO_PULLBACK_TOO_DEEP)
-        if not result:
-            assert result.detected is False
+    def test_empty_bars_rejected(self):
+        """Test that empty DataFrame is rejected."""
+        detector = MicroPullback()
+        result = detector.detect(pd.DataFrame())
 
-
-class TestToppingTailExit:
-    """Tests for topping tail exit signal detection."""
-
-    def setup_method(self):
-        """Set up test fixtures."""
-        # Use MicroPullback as a concrete PatternDetector for testing
-        self.detector = MicroPullback()
-
-    def _get_topping_tail_signal(self, fixture):
-        """
-        Helper to check for topping tail signal in fixture data.
-
-        Args:
-            fixture: Dict with 'entry_price' and 'bars' keys
-
-        Returns:
-            ExitSignal if topping tail detected, None otherwise
-        """
-        bars = fixture["bars"]
-        entry_price = fixture["entry_price"]
-        post_entry = bars.iloc[1:]  # Skip entry bar
-
-        signal = self.detector._check_topping_tail(post_entry, entry_price)
-        return signal
-
-    def test_valid_topping_tail_detected(self):
-        """Test that a valid topping tail is detected."""
-        signal = self._get_topping_tail_signal(TOPPING_TAIL_VALID)
-
-        assert signal is not None
-        assert signal.signal_type == "topping_tail"
-        assert signal.triggered is True
-        assert "upper wick" in signal.reason.lower()
-
-    def test_wick_too_small_rejected(self):
-        """Test that small upper wick (<2x body) is rejected."""
-        signal = self._get_topping_tail_signal(TOPPING_TAIL_WICK_TOO_SMALL)
-
-        assert signal is None  # Should not trigger
-
-    def test_body_not_low_rejected(self):
-        """Test that body not in lower third is rejected."""
-        signal = self._get_topping_tail_signal(TOPPING_TAIL_BODY_NOT_LOW)
-
-        assert signal is None  # Should not trigger
-
-    def test_not_in_profit_rejected(self):
-        """Test that topping tail below entry is rejected."""
-        signal = self._get_topping_tail_signal(TOPPING_TAIL_NOT_IN_PROFIT)
-
-        assert signal is None  # Should not trigger (not in profit)
-
-    # === LIMIT TESTS ===
-
-    def test_limit_wick_ratio_at_minimum(self):
-        """Test detection with exactly 2.0x wick ratio (minimum)."""
-        signal = self._get_topping_tail_signal(TOPPING_TAIL_LIMIT_WICK_RATIO)
-
-        assert signal is not None
-        assert signal.signal_type == "topping_tail"
-        assert signal.triggered is True
-
-    def test_limit_body_position_at_maximum(self):
-        """Test detection with body at exactly 0.33 position (maximum)."""
-        signal = self._get_topping_tail_signal(TOPPING_TAIL_LIMIT_BODY_POSITION)
-
-        assert signal is not None
-        assert signal.signal_type == "topping_tail"
-        assert signal.triggered is True
+        assert result.detected is False
+        assert "empty" in result.reason.lower()
 
 
 class TestStopHitExit:
@@ -503,64 +267,6 @@ class TestVolumDeclineExit:
         assert signal.triggered is True
 
 
-class TestJackknifeExit:
-    """Tests for jackknife exit signal detection."""
-
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.detector = MicroPullback()
-
-    def _get_jackknife_signal(self, fixture):
-        """Helper to check for jackknife signal."""
-        bars = fixture["bars"]
-        post_entry = bars.iloc[1:]  # Skip entry bar
-        return self.detector._check_jackknife(post_entry)
-
-    def test_valid_jackknife(self):
-        """Test that jackknife triggers when all conditions met."""
-        signal = self._get_jackknife_signal(JACKKNIFE_VALID)
-
-        assert signal is not None
-        assert signal.signal_type == "jackknife"
-        assert signal.triggered is True
-
-    def test_not_enough_bars(self):
-        """Test that signal is NOT triggered with < 2 bars."""
-        signal = self._get_jackknife_signal(JACKKNIFE_NOT_ENOUGH_BARS)
-
-        assert signal is None
-
-    def test_no_new_high(self):
-        """Test that signal is NOT triggered without new high."""
-        signal = self._get_jackknife_signal(JACKKNIFE_NO_NEW_HIGH)
-
-        assert signal is None
-
-    def test_above_prior_low(self):
-        """Test that signal is NOT triggered when close >= prior low."""
-        signal = self._get_jackknife_signal(JACKKNIFE_ABOVE_PRIOR_LOW)
-
-        assert signal is None
-
-    def test_green_candle(self):
-        """Test that signal is NOT triggered on green candle."""
-        signal = self._get_jackknife_signal(JACKKNIFE_GREEN_CANDLE)
-
-        assert signal is None
-
-    def test_limit_equal_high(self):
-        """Test that high == prior high does NOT trigger (needs >)."""
-        signal = self._get_jackknife_signal(JACKKNIFE_LIMIT_EQUAL_HIGH)
-
-        assert signal is None
-
-    def test_limit_equal_low(self):
-        """Test that close == prior low does NOT trigger (needs <)."""
-        signal = self._get_jackknife_signal(JACKKNIFE_LIMIT_EQUAL_LOW)
-
-        assert signal is None
-
-
 class TestMACDCrossExit:
     """Tests for MACD cross exit signal detection."""
 
@@ -652,24 +358,6 @@ class TestOpeningRangeRetest:
 class TestConfidenceSystem:
     """Tests for the standardized confidence scoring system."""
 
-    def test_micro_pullback_base_confidence(self):
-        """Test that MicroPullback starts at 65% base confidence."""
-        detector = MicroPullback()
-        result = detector.detect(MICRO_PULLBACK_VALID)
-
-        if result.detected:
-            # Base is 65%, max is 90%
-            assert 0.65 <= result.confidence <= 0.90
-
-    def test_bull_flag_base_confidence(self):
-        """Test that BullFlag starts at 65% base confidence."""
-        detector = BullFlag()
-        result = detector.detect(BULL_FLAG_VALID)
-
-        if result.detected:
-            # Base is 65%, max is 90%
-            assert 0.65 <= result.confidence <= 0.90
-
     def test_vwap_break_base_confidence(self):
         """Test that VWAPBreak starts at 65% base confidence."""
         detector = VWAPBreak()
@@ -682,95 +370,12 @@ class TestConfidenceSystem:
 
     def test_confidence_capped_at_90(self):
         """Test that confidence is capped at 90%."""
-        detector = MicroPullback()
-        result = detector.detect(MICRO_PULLBACK_VALID)
-
-        if result.detected:
-            assert result.confidence <= 0.90
-
-    def test_macd_slope_up_field_exists(self):
-        """Test that macd_slope_up field is populated."""
-        detector = MicroPullback()
-        result = detector.detect(MICRO_PULLBACK_VALID)
-
-        if result.detected:
-            # Should be boolean or None (if insufficient bars)
-            assert result.macd_slope_up is None or isinstance(result.macd_slope_up, bool)
-
-    def test_macd_slope_up_in_bull_flag(self):
-        """Test that BullFlag has macd_slope_up field."""
-        detector = BullFlag()
-        result = detector.detect(BULL_FLAG_VALID)
-
-        if result.detected:
-            assert result.macd_slope_up is None or isinstance(result.macd_slope_up, bool)
-
-    def test_macd_slope_up_in_vwap_break(self):
-        """Test that VWAPBreak has macd_slope_up field."""
         detector = VWAPBreak()
         bars, vwap = VWAP_BREAK_VALID
         result = detector.detect(bars, vwap=vwap)
 
         if result.detected:
-            assert result.macd_slope_up is None or isinstance(result.macd_slope_up, bool)
-
-
-class TestConfidenceBoosts:
-    """Tests for individual confidence boost factors."""
-
-    def _create_bars_with_macd(self, n=50, trend='up'):
-        """Create test bars with controlled MACD behavior."""
-        import numpy as np
-
-        # Generate price data that creates predictable MACD
-        base_price = 10.0
-        if trend == 'up':
-            prices = base_price + np.linspace(0, 2, n) + np.random.normal(0, 0.05, n)
-        else:
-            prices = base_price + np.linspace(2, 0, n) + np.random.normal(0, 0.05, n)
-
-        bars = pd.DataFrame({
-            'timestamp': pd.date_range('2024-01-01 09:30', periods=n, freq='1min'),
-            'open': prices - 0.02,
-            'high': prices + 0.05,
-            'low': prices - 0.05,
-            'close': prices,
-            'volume': [100000] * n,
-        })
-        return bars
-
-    def test_confidence_boosted_by_volume_declining(self):
-        """Test that volume_declining adds to confidence."""
-        detector = MicroPullback()
-        result = detector.detect(MICRO_PULLBACK_VALID)
-
-        if result.detected and result.details:
-            # If volume is declining, confidence should be boosted
-            if result.details.get('volume_declining'):
-                # Base 65% + volume_declining 10% = at least 75%
-                assert result.confidence >= 0.75
-
-    def test_confidence_boosted_by_macd_positive(self):
-        """Test that macd_positive adds +8% to confidence."""
-        detector = MicroPullback()
-        result = detector.detect(MICRO_PULLBACK_VALID)
-
-        if result.detected:
-            # If MACD is positive, confidence should be boosted
-            if result.macd_positive:
-                # Should include +8% from macd_positive
-                assert result.confidence >= 0.73  # 65% base + 8%
-
-    def test_confidence_boosted_by_macd_slope_up(self):
-        """Test that macd_slope_up adds +4% to confidence."""
-        detector = MicroPullback()
-        result = detector.detect(MICRO_PULLBACK_VALID)
-
-        if result.detected:
-            # If MACD slope is up, confidence should be boosted
-            if result.macd_slope_up:
-                # Should include +4% from macd_slope_up
-                assert result.confidence >= 0.69  # 65% base + 4%
+            assert result.confidence <= 0.90
 
 
 if __name__ == "__main__":

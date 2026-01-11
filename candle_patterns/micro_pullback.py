@@ -6,15 +6,13 @@ Momentum continuation pattern for day trading stocks.
 Tuned for Ross Cameron's trading style on volatile small caps.
 
 Pattern Structure:
-1. Strong prior surge (2+ candles with >50% green, 5%+ net gain)
-2. Pullback/consolidation (configurable depth and length via config)
-   - Two-tier candle limits based on pullback depth:
-     - Shallow (<=12%): up to 12 candles (more time to consolidate)
-     - Deep (>12%): up to 7 candles (must resolve quickly)
-   - Max pullback depth: 20% retracement from swing high
-3. Entry trigger (configurable):
-   - "first_green_after_pullback": Enter on first green candle (Ross's style)
-   - "first_candle_new_high": Wait for breakout to new high (conservative)
+1. Strong prior surge (2+ candles with >50% green, 5-15% net gain)
+2. Shallow pullback/consolidation:
+   - Max pullback depth: 12% retracement from swing high
+   - Max duration: 6 candles
+3. Entry trigger: First green candle after pullback (aggressive, Ross's style)
+
+Note: Prior moves >15% are routed to Bull Flag pattern for deeper pullbacks.
 
 Detection uses flexible range-based logic:
 - Finds swing high in lookback window
@@ -46,21 +44,16 @@ class MicroPullback(PatternDetector):
         Validated against labeled trades: SPRC, GORV, SBEV, HTOO.
         """
         return {
-            # Prior move requirements
+            # Prior move requirements (5-15% range, >15% routes to Bull Flag)
             "min_prior_move_pct": 5.0,  # Min 5% move before pullback
+            "max_prior_move_pct": 15.0,  # Max 15% (larger moves -> Bull Flag)
             "min_green_candles_prior": 2,  # At least 2 candles, >50% green
 
-            # Pullback depth limit
-            "max_pullback_pct": 20.0,  # Allow up to 20% retracement
+            # Shallow pullback limits (tighter than Bull Flag)
+            "max_pullback_pct": 12.0,  # Max 12% retracement (shallow only)
+            "max_pullback_candles": 6,  # Max 6 candles in pullback
 
-            # Two-tier pullback candle limits based on depth
-            # Deep pullbacks should resolve quickly; shallow can consolidate longer
-            "shallow_pullback_threshold_pct": 12.0,  # Threshold between shallow/deep
-            "max_pullback_candles_shallow": 12,  # If pullback <= 12%: allow more time
-            "max_pullback_candles_deep": 7,  # If pullback > 12%: must resolve quickly
-
-            # Entry trigger - Ross's style
-            # Options: "first_green_after_pullback" (aggressive) or "first_candle_new_high" (conservative)
+            # Entry trigger - Ross's style (aggressive)
             "entry": "first_green_after_pullback",
 
             # Confirmation (advisory, not hard gates)
@@ -144,20 +137,11 @@ class MicroPullback(PatternDetector):
         pullback_low = pullback_window["low"].min()
         pullback_pct = abs(self.calculate_move_pct(swing_high, pullback_low))
 
-        # Two-tier pullback candle limit based on depth
-        # Deep pullbacks (>threshold) must resolve quickly; shallow can consolidate longer
-        shallow_threshold = self.config.get("shallow_pullback_threshold_pct", 12.0)
-        if pullback_pct > shallow_threshold:
-            max_pullback_candles = self.config.get("max_pullback_candles_deep", 7)
-            tier = "deep"
-        else:
-            max_pullback_candles = self.config.get("max_pullback_candles_shallow", 12)
-            tier = "shallow"
-
-        # Check pullback length against tier-appropriate limit
+        # Check pullback duration (simplified single limit)
+        max_pullback_candles = self.config.get("max_pullback_candles", 6)
         if pullback_candle_count > max_pullback_candles:
             return self.not_detected(
-                f"Pullback too long: {pullback_candle_count} candles > {max_pullback_candles} ({tier}, {pullback_pct:.1f}% depth)"
+                f"Pullback too long: {pullback_candle_count} candles > {max_pullback_candles}"
             )
 
         # Step 2: Find the prior surge (the move UP to the swing high)
@@ -200,6 +184,13 @@ class MicroPullback(PatternDetector):
         surge_low = surge_window["low"].min()
         surge_high = surge_window["high"].max()
         prior_move_pct = self.calculate_move_pct(surge_low, surge_high)
+
+        # Check max prior move (larger moves should use Bull Flag)
+        max_prior_move = self.config.get("max_prior_move_pct", 15.0)
+        if prior_move_pct > max_prior_move:
+            return self.not_detected(
+                f"Prior move too large: {prior_move_pct:.1f}% > {max_prior_move}% (use Bull Flag)"
+            )
 
         # Get pullback high (pullback_window, pullback_low, pullback_pct already calculated above)
         pullback_high = pullback_window["high"].max()
@@ -320,8 +311,6 @@ class MicroPullback(PatternDetector):
             details={
                 "prior_move_pct": prior_move_pct,
                 "pullback_pct": pullback_pct,
-                "pullback_tier": tier,
-                "max_pullback_candles": max_pullback_candles,
                 "green_candles": int(green_count),
                 "pullback_candles": pullback_candle_count,
                 "swing_high": swing_high,

@@ -47,8 +47,8 @@ _ORB_VALID_DATA = [
     (101.0, 101.1, 100.9, 101.0, 110000),
     (101.0, 101.1, 100.9, 101.0, 110000),
 
-    # Retest (last bar) within OR high zone
-    (100.9, 100.8, 100.4, 100.6, 150000),
+    # Retest (last bar) within OR high zone - must be BULLISH (close > open)
+    (100.4, 100.9, 100.4, 100.7, 150000),  # Green bar: O=100.4, H=100.9, L=100.4, C=100.7
 ]
 
 OPENING_RANGE_RETEST_VALID = _make_bars(

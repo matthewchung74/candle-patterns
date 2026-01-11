@@ -2,13 +2,20 @@
 Micro Pullback Test Fixtures
 ============================
 
-Real-world example bars for testing micro pullback detection.
+Comprehensive limit/boundary testing for the NEW Micro Pullback rules:
+- Prior move: 5-15% (>15% routes to Bull Flag)
+- Pullback: ≤12% retracement
+- Duration: ≤6 candles
+- Entry: First green candle after pullback (aggressive)
+- Minimum 6 bars required
+
+Each fixture tests ONE specific rule at its boundary.
 """
 
 import pandas as pd
 from datetime import datetime, timedelta
 
-# Helper to create bar data
+
 def _make_bars(data: list) -> pd.DataFrame:
     """Create DataFrame from OHLCV tuples."""
     base_time = datetime(2025, 1, 15, 9, 30)
@@ -26,269 +33,347 @@ def _make_bars(data: list) -> pd.DataFrame:
 
 
 # =============================================================================
-# VALID MICRO PULLBACK
+# PASS CASES (7)
 # =============================================================================
-# Pattern: Stock surges 15% with 4 green candles, pulls back 5% with 2 red
-# candles, then bounces on green candle.
-#
-# Designed to pass R:R check (min 2.0):
-# - Prior move: 15% → estimated target +15% from entry
-# - Pullback: 5% with tight stop → good R:R
-#
-# Visual:
-#   Bar 1-4: Strong move from $4.00 to $4.60 (15% gain, 4 green)
-#   Bar 5-6: Shallow pullback to $4.40 (4% dip, 2 red)
-#   Bar 7: Bounce candle (entry candle, green)
 
-MICRO_PULLBACK_VALID = _make_bars([
-    # Strong prior move (4 green candles, ~15% move)
-    (4.00, 4.12, 3.98, 4.10, 150000),  # Bar 1: +2.5%
-    (4.10, 4.25, 4.08, 4.22, 180000),  # Bar 2: +2.9%
-    (4.22, 4.40, 4.20, 4.38, 200000),  # Bar 3: +3.8%
-    (4.38, 4.62, 4.36, 4.60, 220000),  # Bar 4: +5.0% (high of move: 4.62)
+# -----------------------------------------------------------------------------
+# MP_PASS_VALID: Standard valid pattern
+# Prior move ~10%, pullback ~8%, green entry
+# -----------------------------------------------------------------------------
+MP_PASS_VALID = _make_bars([
+    # Surge: 10% move from 10.00 to 11.00 (3 green candles)
+    (10.00, 10.35, 9.98, 10.30, 200000),  # green +3%
+    (10.30, 10.65, 10.28, 10.60, 220000),  # green +2.9%
+    (10.60, 11.02, 10.58, 11.00, 250000),  # green +3.8% (swing high: 11.02)
 
-    # Shallow pullback (2 red candles, ~5% dip from high)
-    (4.60, 4.61, 4.45, 4.48, 100000),  # Bar 5: -2.6% (red)
-    (4.48, 4.50, 4.38, 4.40, 80000),   # Bar 6: -1.8% (red, pullback low: 4.38)
+    # Pullback: 8% from 11.02 → low ~10.14 (3 candles)
+    (11.00, 11.01, 10.50, 10.55, 100000),  # red
+    (10.55, 10.58, 10.20, 10.25, 90000),   # red
+    (10.25, 10.30, 10.14, 10.18, 80000),   # red (low: 10.14 = 8% pullback)
 
-    # Entry candle - bounce from pullback
-    (4.40, 4.55, 4.38, 4.52, 250000),  # Bar 7: green bounce (entry ~4.41)
+    # Entry: green bounce
+    (10.18, 10.50, 10.15, 10.45, 200000),  # GREEN entry
 ])
 
-# Expected result:
-# - detected: True
-# - entry_price: ~4.41 (open + 0.01)
-# - stop_price: ~4.23 (pullback low 4.38 - 0.15)
-# - risk: ~0.18 ($4.41 - $4.23)
-# - target: ~4.41 + 15% = ~5.07
-# - R:R: (5.07 - 4.41) / 0.18 = ~3.7 (passes 2.0 min)
 
+# -----------------------------------------------------------------------------
+# MP_PASS_MIN_PRIOR_MOVE: Prior move at 5.1% (just above 5% minimum)
+# Tests: min_prior_move_pct = 5.0
+# Need 6+ bars for pattern detection
+# Note: Algorithm finds smallest valid window first, so even 2-bar window needs 5%+
+# -----------------------------------------------------------------------------
+MP_PASS_MIN_PRIOR_MOVE = _make_bars([
+    # Surge: Make sure even 2-bar window has 5.1%+ move
+    # bars 1-2 need: low to high >= 5%
+    # If bar1 low = 10.00 and bar2 high = 10.51, move = 5.1%
+    (10.00, 10.05, 10.00, 10.02, 150000),  # flat/noise bar
+    (10.02, 10.08, 10.00, 10.05, 160000),  # bar 1: low = 10.00
+    (10.05, 10.52, 10.02, 10.50, 180000),  # bar 2: high = 10.52, 5.2% from 10.00 (swing high)
 
-# =============================================================================
-# MICRO PULLBACK - TOO DEEP
-# =============================================================================
-# Pattern: Good prior move, but pullback is too deep (25% vs max 20%)
-# Should NOT detect as valid micro pullback.
+    # Shallow pullback: ~4% (well under 12%)
+    (10.50, 10.51, 10.12, 10.15, 80000),   # red
+    (10.15, 10.18, 10.10, 10.12, 75000),   # red (low: 10.10)
 
-MICRO_PULLBACK_TOO_DEEP = _make_bars([
-    # Strong prior move (15% gain)
-    (4.00, 4.12, 3.98, 4.10, 150000),
-    (4.10, 4.25, 4.08, 4.22, 180000),
-    (4.22, 4.40, 4.20, 4.38, 200000),
-    (4.38, 4.62, 4.36, 4.60, 220000),  # High: 4.62
-
-    # Deep pullback (25% dip from high - exceeds 20% max)
-    # 4.62 * 0.75 = 3.465, so low needs to be ~3.46
-    (4.60, 4.61, 4.00, 4.05, 120000),  # Bar 5: big red
-    (4.05, 4.10, 3.45, 3.50, 100000),  # Bar 6: low: 3.45 = 25% from 4.62
-
-    # Attempted bounce
-    (3.50, 3.80, 3.48, 3.75, 200000),  # Bar 7: green bounce attempt
+    # Entry: green bounce
+    (10.12, 10.40, 10.08, 10.35, 180000),  # GREEN entry
 ])
 
-# Expected result:
-# - detected: False
-# - reason: "Pullback too deep: 25.x% > 20%"
 
+# -----------------------------------------------------------------------------
+# MP_PASS_MAX_PRIOR_MOVE: Prior move at 14.9% (just below 15% maximum)
+# Tests: max_prior_move_pct = 15.0
+# Note: Even 2-bar window must show ~14.9% to test boundary properly
+# -----------------------------------------------------------------------------
+MP_PASS_MAX_PRIOR_MOVE = _make_bars([
+    # Surge: Make 2-bar window have 14.9% move
+    # bars 1-2: low = 10.00, high = 11.49 → 14.9%
+    (10.00, 10.05, 10.00, 10.02, 200000),  # flat bar
+    (10.02, 10.10, 10.00, 10.08, 220000),  # bar 1: low = 10.00
+    (10.08, 11.49, 10.05, 11.45, 280000),  # bar 2: high = 11.49, move = 14.9% (swing high)
 
-# =============================================================================
-# MICRO PULLBACK - NO VALID SURGE
-# =============================================================================
-# Pattern: Insufficient prior surge before pullback.
-# The detector requires: min_prior_move_pct AND >50% green candles in surge.
-# This fixture has a weak move that may not meet the threshold.
-# Should NOT detect as valid micro pullback.
+    # Shallow pullback: 5%
+    (11.45, 11.46, 10.92, 10.95, 100000),  # red
+    (10.95, 10.98, 10.90, 10.92, 90000),   # red (low: 10.90)
 
-MICRO_PULLBACK_NO_PRIOR_MOVE = _make_bars([
-    # Some noise before
-    (4.95, 4.98, 4.92, 4.96, 100000),  # Bar 1: red (noise)
-
-    # Weak prior move - only ~4.6% from low to high
-    (4.96, 5.08, 4.95, 5.07, 150000),  # Bar 2: green
-    (5.07, 5.18, 5.05, 5.16, 180000),  # Bar 3: green
-
-    # Pullback
-    (5.16, 5.17, 5.10, 5.12, 80000),   # Bar 4: red
-    (5.12, 5.14, 5.08, 5.09, 70000),   # Bar 5: red
-
-    # Entry attempt
-    (5.09, 5.20, 5.08, 5.19, 150000),  # Bar 6: green, new high
+    # Entry: green bounce
+    (10.92, 11.30, 10.88, 11.25, 220000),  # GREEN entry
 ])
 
-# Expected result:
-# - detected: False
-# - reason: "No valid surge found (need X%+ move with >50% green candles)"
-# Note: Actual rejection depends on min_prior_move_pct config value.
 
+# -----------------------------------------------------------------------------
+# MP_PASS_MAX_PULLBACK: Pullback at 11.9% (just below 12% maximum)
+# Tests: max_pullback_pct = 12.0
+# -----------------------------------------------------------------------------
+MP_PASS_MAX_PULLBACK = _make_bars([
+    # Surge: 10% move for good R:R
+    (10.00, 10.35, 10.00, 10.32, 200000),  # green
+    (10.32, 10.68, 10.30, 10.65, 220000),  # green
+    (10.65, 11.00, 10.62, 10.98, 250000),  # green (high: 11.00)
 
-# =============================================================================
-# MICRO PULLBACK - PULLBACK TOO LONG
-# =============================================================================
-# Pattern: Good prior move, but 4 red candles in pullback (max is 2)
+    # Pullback: ~11.8% from 11.00 → low = 9.70
+    (10.98, 10.99, 10.20, 10.25, 100000),  # red
+    (10.25, 10.28, 9.70, 9.72, 90000),     # red (low: 9.70 = 11.8% from 11.00)
 
-MICRO_PULLBACK_TOO_LONG = _make_bars([
-    # Strong prior move
-    (5.00, 5.08, 4.98, 5.07, 150000),
-    (5.07, 5.18, 5.05, 5.16, 180000),
-    (5.16, 5.28, 5.14, 5.26, 200000),
-    (5.26, 5.42, 5.24, 5.40, 220000),
-
-    # Long pullback (4 red candles - too many)
-    (5.40, 5.41, 5.35, 5.36, 90000),
-    (5.36, 5.37, 5.32, 5.33, 85000),
-    (5.33, 5.34, 5.29, 5.30, 80000),
-    (5.30, 5.31, 5.27, 5.28, 75000),  # 4th red candle
-
-    # Entry attempt
-    (5.28, 5.45, 5.27, 5.43, 200000),
+    # Entry: green bounce
+    (9.72, 10.30, 9.68, 10.25, 200000),    # GREEN entry
 ])
 
-# Expected result:
-# - detected: False
-# - reason: "Pullback too long: 4 candles > 2"
 
+# -----------------------------------------------------------------------------
+# MP_PASS_MAX_DURATION: Pullback at exactly 6 candles (maximum)
+# Tests: max_pullback_candles = 6
+# -----------------------------------------------------------------------------
+MP_PASS_MAX_DURATION = _make_bars([
+    # Surge: 10% move (3 green candles)
+    (10.00, 10.35, 10.00, 10.32, 200000),  # green
+    (10.32, 10.68, 10.30, 10.65, 220000),  # green
+    (10.65, 11.02, 10.62, 11.00, 250000),  # green (high: 11.02)
 
-# =============================================================================
-# MICRO PULLBACK - WAITING FOR ENTRY
-# =============================================================================
-# Pattern: Valid setup but last candle is still red (no entry yet)
+    # Pullback: exactly 6 candles (at limit), shallow 5%
+    (11.00, 11.01, 10.70, 10.72, 100000),  # red candle 1
+    (10.72, 10.75, 10.60, 10.62, 95000),   # red candle 2
+    (10.62, 10.65, 10.55, 10.58, 90000),   # red candle 3
+    (10.58, 10.60, 10.50, 10.52, 85000),   # red candle 4
+    (10.52, 10.55, 10.48, 10.50, 80000),   # red candle 5
+    (10.50, 10.52, 10.45, 10.47, 75000),   # red candle 6 (low: 10.45 = 5% from 11.02)
 
-MICRO_PULLBACK_WAITING = _make_bars([
-    # Strong prior move
-    (5.00, 5.08, 4.98, 5.07, 150000),
-    (5.07, 5.18, 5.05, 5.16, 180000),
-    (5.16, 5.28, 5.14, 5.26, 200000),
-    (5.26, 5.42, 5.24, 5.40, 220000),
-
-    # Pullback in progress
-    (5.40, 5.41, 5.32, 5.34, 100000),
-    (5.34, 5.36, 5.29, 5.30, 80000),  # Last bar is still red
+    # Entry: green bounce
+    (10.47, 10.80, 10.45, 10.75, 200000),  # GREEN entry
 ])
 
-# Expected result:
-# - detected: False
-# - reason: "Last candle is red - waiting for green entry candle"
 
-
-# =============================================================================
-# LIMIT TESTS - Testing rules at their boundaries
-# =============================================================================
-
-# =============================================================================
-# MICRO PULLBACK - LIMIT: Exactly 5% Prior Move (minimum)
-# =============================================================================
-# Tests min_prior_move_pct: 5.0 at the exact limit.
-# Should PASS with 5.25% move from surge low to surge high.
-# Note: Using higher prices ($10+) so 15-cent stop buffer is proportionally
-# smaller, allowing R:R >= 2.0 even with small 5% target.
-
-MICRO_PULLBACK_LIMIT_PRIOR_MOVE = _make_bars([
-    # Buffer bar before surge
-    (9.95, 10.02, 9.94, 10.00, 100000),  # Bar 1: noise
-
-    # Prior move: 5.25% from low 10.00 to high 10.525 in 3 bars
-    # All green candles (100% green > 50%)
-    (10.00, 10.18, 10.00, 10.15, 150000),  # Bar 2: green (surge low=10.00)
-    (10.15, 10.35, 10.12, 10.32, 160000),  # Bar 3: green
-    (10.32, 10.53, 10.30, 10.50, 180000),  # Bar 4: green (swing high=10.53, surge=5.3%)
-
-    # Pullback from swing high (10.53) - shallow pullback for tight stop
-    (10.50, 10.51, 10.35, 10.38, 80000),   # Bar 5: red pullback
-    (10.38, 10.40, 10.30, 10.32, 70000),   # Bar 6: red (low: 10.30)
-
-    # Entry candle - green bounce
-    (10.32, 10.55, 10.30, 10.52, 200000),  # Bar 7: green entry
-])
-
-# Expected result:
-# - detected: True
-# - prior_move_pct: ~5.3% (at limit, from 10.00 to 10.53)
-# - entry: ~10.33, stop: 10.30-0.15=10.15, risk: 0.18
-# - reward: 10.33 * 0.053 = 0.55
-# - R:R: 0.55 / 0.18 = 3.0 (passes 2.0)
-
-
-# =============================================================================
-# MICRO PULLBACK - LIMIT: Exactly 20% Pullback (maximum)
-# =============================================================================
-# Tests max_pullback_pct: 20.0 at the exact limit.
-# Should PASS with exactly 20% pullback.
-
-MICRO_PULLBACK_LIMIT_PULLBACK_PCT = _make_bars([
-    # Strong prior move (25% gain for good R:R)
-    (4.00, 4.15, 3.98, 4.12, 200000),  # Bar 1: green
-    (4.12, 4.30, 4.10, 4.28, 220000),  # Bar 2: green
-    (4.28, 4.50, 4.25, 4.48, 250000),  # Bar 3: green
-    (4.48, 4.75, 4.45, 4.70, 280000),  # Bar 4: green
-    (4.70, 5.02, 4.68, 5.00, 300000),  # Bar 5: green (high: 5.02, 25% from 4.00)
-
-    # Exactly 20% pullback from 5.02 high → low = 5.02 * 0.80 = 4.016
-    (5.00, 5.01, 4.20, 4.25, 100000),  # Bar 6: red
-    (4.25, 4.28, 4.02, 4.05, 90000),   # Bar 7: red (low: 4.02 = 19.9% pullback)
-
-    # Entry candle
-    (4.05, 4.30, 4.00, 4.25, 250000),  # Bar 8: green entry
-])
-
-# Expected result:
-# - detected: True
-# - pullback_pct: ~20% (at limit)
-
-
-# =============================================================================
-# MICRO PULLBACK - LIMIT: Exactly 7 Pullback Candles (maximum)
-# =============================================================================
-# Tests max_pullback_candles: 7 at the exact limit.
-# Should PASS with exactly 7 consolidation candles.
-
-MICRO_PULLBACK_LIMIT_PULLBACK_CANDLES = _make_bars([
-    # Strong prior move (20% for good R:R)
-    (4.00, 4.15, 3.98, 4.12, 200000),  # Bar 1: green
-    (4.12, 4.30, 4.10, 4.28, 220000),  # Bar 2: green
-    (4.28, 4.50, 4.25, 4.48, 250000),  # Bar 3: green
-    (4.48, 4.82, 4.45, 4.80, 280000),  # Bar 4: green (high: 4.82, 20% move)
-
-    # Exactly 7 pullback/consolidation candles (max allowed)
-    (4.80, 4.81, 4.60, 4.62, 100000),  # Bar 5: red
-    (4.62, 4.68, 4.55, 4.58, 95000),   # Bar 6: red
-    (4.58, 4.65, 4.50, 4.52, 90000),   # Bar 7: red
-    (4.52, 4.58, 4.45, 4.48, 85000),   # Bar 8: red
-    (4.48, 4.55, 4.40, 4.42, 80000),   # Bar 9: red
-    (4.42, 4.50, 4.38, 4.40, 75000),   # Bar 10: red
-    (4.40, 4.48, 4.35, 4.38, 70000),   # Bar 11: red (7th pullback, low: 4.35)
-
-    # Entry candle
-    (4.38, 4.60, 4.35, 4.55, 250000),  # Bar 12: green entry
-])
-
-# Expected result:
-# - detected: True
-# - pullback_candles: 7 (at limit)
-
-
-# =============================================================================
-# MICRO PULLBACK - LIMIT: Just Above 50% Green Ratio (minimum)
-# =============================================================================
-# Tests >50% green candle requirement.
-# The detector requires strictly more than 50% green candles in the surge.
-# This fixture has 3 green out of 4 candles = 75%, which passes.
-# (Exactly 50% = 2/4 would fail since detector uses > not >=)
-
-MICRO_PULLBACK_LIMIT_GREEN_RATIO = _make_bars([
-    # Prior move with 3 green out of 4 = 75% (passes >50% requirement)
-    (4.00, 4.08, 3.98, 3.99, 150000),  # Bar 1: RED (close < open)
-    (3.99, 4.18, 3.97, 4.15, 180000),  # Bar 2: green +4%
-    (4.15, 4.35, 4.12, 4.32, 200000),  # Bar 3: green +4%
-    (4.32, 4.52, 4.30, 4.50, 220000),  # Bar 4: green +4% (3/4 = 75% green)
+# -----------------------------------------------------------------------------
+# MP_PASS_MIN_GREEN_RATIO: Green ratio at 60% (3/5 green, just above 50%)
+# Tests: >50% green candles requirement
+# -----------------------------------------------------------------------------
+MP_PASS_MIN_GREEN_RATIO = _make_bars([
+    # Surge: 5 candles with 3 green (60% > 50%)
+    # Net move: 10.00 to 10.82 = 8.2%
+    (10.00, 10.08, 9.98, 9.99, 150000),    # RED (close < open)
+    (9.99, 10.28, 9.97, 10.25, 180000),    # green +2.6%
+    (10.25, 10.22, 10.18, 10.20, 160000),  # RED
+    (10.20, 10.55, 10.18, 10.52, 200000),  # green +3.1%
+    (10.52, 10.82, 10.50, 10.80, 220000),  # green +2.7% (high: 10.82)
 
     # Shallow pullback
-    (4.50, 4.51, 4.30, 4.32, 80000),   # Bar 5: red
-    (4.32, 4.35, 4.25, 4.28, 70000),   # Bar 6: red (low: 4.25)
+    (10.80, 10.81, 10.45, 10.48, 90000),   # red (low: 10.45 = 3.4% from 10.82)
 
-    # Entry candle
-    (4.28, 4.50, 4.25, 4.45, 200000),  # Bar 7: green entry
+    # Entry: green bounce
+    (10.48, 10.75, 10.45, 10.70, 180000),  # GREEN entry
 ])
 
-# Expected result:
-# - detected: True
-# - green_ratio: 3 out of 4 in surge = 75% (passes >50% requirement)
+
+# -----------------------------------------------------------------------------
+# MP_PASS_MIN_RR: R:R at ~2.1 (just above 2.0 minimum)
+# Tests: min_rr_for_setup = 2.0
+# -----------------------------------------------------------------------------
+MP_PASS_MIN_RR = _make_bars([
+    # Surge: 8% move (gives decent target)
+    (10.00, 10.30, 10.00, 10.28, 150000),  # green
+    (10.28, 10.55, 10.25, 10.52, 160000),  # green
+    (10.52, 10.82, 10.50, 10.80, 180000),  # green (high: 10.82, 8.2% from 10.00)
+
+    # Shallow pullback to get right R:R
+    (10.80, 10.81, 10.30, 10.32, 80000),   # red
+    (10.32, 10.35, 10.22, 10.25, 75000),   # red (low: 10.22)
+
+    # Entry: green bounce
+    (10.25, 10.55, 10.20, 10.50, 180000),  # GREEN entry
+])
+
+
+# =============================================================================
+# FAIL CASES (7)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# MP_FAIL_BELOW_MIN_PRIOR: Prior move at 4.9% (below 5% minimum)
+# Tests: min_prior_move_pct = 5.0
+# -----------------------------------------------------------------------------
+MP_FAIL_BELOW_MIN_PRIOR = _make_bars([
+    # Surge: 4.9% move (below 5% minimum) from 10.00 to 10.49
+    (10.00, 10.18, 10.00, 10.15, 150000),  # green
+    (10.15, 10.32, 10.12, 10.30, 160000),  # green
+    (10.30, 10.49, 10.28, 10.47, 180000),  # green (high: 10.49, 4.9% from 10.00)
+
+    # Shallow pullback
+    (10.47, 10.48, 10.20, 10.22, 80000),   # red
+    (10.22, 10.25, 10.15, 10.18, 75000),   # red
+
+    # Entry attempt
+    (10.18, 10.40, 10.15, 10.35, 180000),  # green
+])
+
+
+# -----------------------------------------------------------------------------
+# MP_FAIL_ABOVE_MAX_PRIOR: Prior move at 15.2% (above 15% maximum)
+# Tests: max_prior_move_pct = 15.0
+# Should route to Bull Flag instead
+# Note: Even smallest valid 2-bar window must have >15% move
+# -----------------------------------------------------------------------------
+MP_FAIL_ABOVE_MAX_PRIOR = _make_bars([
+    # Surge: Make even 2-bar window have 15.2% move
+    # bars 1-2: low = 10.00, high = 11.52 → 15.2%
+    (10.00, 10.05, 10.00, 10.02, 200000),  # flat bar
+    (10.02, 10.10, 10.00, 10.08, 220000),  # bar 1: low = 10.00
+    (10.08, 11.52, 10.05, 11.50, 280000),  # bar 2: high = 11.52, move = 15.2% (swing high)
+
+    # Shallow pullback
+    (11.50, 11.51, 11.00, 11.05, 100000),  # red
+    (11.05, 11.08, 10.98, 11.02, 90000),   # red
+
+    # Entry attempt
+    (11.02, 11.40, 11.00, 11.35, 220000),  # green
+])
+
+
+# -----------------------------------------------------------------------------
+# MP_FAIL_PULLBACK_TOO_DEEP: Pullback at 12.5% (above 12% maximum)
+# Tests: max_pullback_pct = 12.0
+# -----------------------------------------------------------------------------
+MP_FAIL_PULLBACK_TOO_DEEP = _make_bars([
+    # Surge: 10% move
+    (10.00, 10.35, 10.00, 10.32, 200000),  # green
+    (10.32, 10.68, 10.30, 10.65, 220000),  # green
+    (10.65, 11.00, 10.62, 10.98, 250000),  # green (high: 11.00)
+
+    # Deep pullback: 12.5% from 11.00 → low = 9.625
+    (10.98, 10.99, 10.20, 10.25, 100000),  # red
+    (10.25, 10.28, 9.62, 9.65, 90000),     # red (low: 9.62 = 12.5% from 11.00)
+
+    # Entry attempt
+    (9.65, 10.10, 9.60, 10.05, 200000),    # green
+])
+
+
+# -----------------------------------------------------------------------------
+# MP_FAIL_DURATION_TOO_LONG: Pullback at 7 candles (above 6 maximum)
+# Tests: max_pullback_candles = 6
+# -----------------------------------------------------------------------------
+MP_FAIL_DURATION_TOO_LONG = _make_bars([
+    # Surge: 10% move
+    (10.00, 10.35, 10.00, 10.32, 200000),  # green
+    (10.32, 10.68, 10.30, 10.65, 220000),  # green
+    (10.65, 11.02, 10.62, 11.00, 250000),  # green (high: 11.02)
+
+    # Pullback: 7 candles (above 6 limit)
+    (11.00, 11.01, 10.75, 10.78, 100000),  # red candle 1
+    (10.78, 10.80, 10.68, 10.70, 95000),   # red candle 2
+    (10.70, 10.72, 10.62, 10.65, 90000),   # red candle 3
+    (10.65, 10.68, 10.58, 10.60, 85000),   # red candle 4
+    (10.60, 10.62, 10.55, 10.57, 80000),   # red candle 5
+    (10.57, 10.60, 10.52, 10.54, 75000),   # red candle 6
+    (10.54, 10.56, 10.50, 10.52, 70000),   # red candle 7 (exceeds limit)
+
+    # Entry attempt
+    (10.52, 10.85, 10.50, 10.80, 200000),  # green
+])
+
+
+# -----------------------------------------------------------------------------
+# MP_FAIL_GREEN_RATIO_LOW: Green ratio at 40% (2/5 green, below 50%)
+# Tests: >50% green candles requirement in surge
+# This fixture ensures NO valid surge window exists
+# -----------------------------------------------------------------------------
+MP_FAIL_GREEN_RATIO_LOW = _make_bars([
+    # Series of bars where no 2-10 bar window has both 5%+ move AND >50% green
+    (10.00, 10.05, 9.95, 9.98, 150000),    # RED
+    (9.98, 10.00, 9.88, 9.90, 140000),     # RED
+    (9.90, 10.10, 9.88, 10.05, 180000),    # green (small)
+    (10.05, 10.08, 9.95, 9.98, 160000),    # RED
+    (9.98, 10.02, 9.90, 9.92, 140000),     # RED
+    (9.92, 10.12, 9.90, 10.08, 200000),    # green (small)
+
+    # Even looking at all 6 bars: 2 green / 6 = 33% < 50%
+    # And net move is only ~0.8%
+    (10.08, 10.15, 10.02, 10.10, 180000),  # GREEN entry
+])
+
+
+# -----------------------------------------------------------------------------
+# MP_FAIL_LAST_BAR_RED: Last bar is red (no entry signal)
+# Tests: Entry candle must be green
+# -----------------------------------------------------------------------------
+MP_FAIL_LAST_BAR_RED = _make_bars([
+    # Surge: 10% move
+    (10.00, 10.35, 10.00, 10.32, 200000),  # green
+    (10.32, 10.68, 10.30, 10.65, 220000),  # green
+    (10.65, 11.02, 10.62, 11.00, 250000),  # green (high: 11.02)
+
+    # Pullback
+    (11.00, 11.01, 10.60, 10.62, 100000),  # red
+    (10.62, 10.65, 10.50, 10.52, 90000),   # red (low: 10.50)
+
+    # NO entry - last bar is RED
+    (10.52, 10.55, 10.40, 10.42, 80000),   # RED (no entry)
+])
+
+
+# -----------------------------------------------------------------------------
+# MP_FAIL_RR_TOO_LOW: R:R below 2.0 minimum
+# Tests: min_rr_for_setup = 2.0
+# Small prior move with wide stop = bad R:R
+# -----------------------------------------------------------------------------
+MP_FAIL_RR_TOO_LOW = _make_bars([
+    # Surge: 5.1% move (minimum)
+    (10.00, 10.18, 10.00, 10.15, 150000),  # green
+    (10.15, 10.35, 10.12, 10.32, 160000),  # green
+    (10.32, 10.51, 10.30, 10.50, 180000),  # green (high: 10.51, 5.1% from 10.00)
+
+    # Deep pullback (still within 12%) creates wide stop
+    # 11% pullback from 10.51 = low of 9.35
+    (10.50, 10.51, 9.50, 9.52, 80000),     # red (big drop)
+    (9.52, 9.55, 9.35, 9.38, 75000),       # red (low: 9.35 = 11% pullback)
+
+    # Entry: entry at 9.39, stop at 9.35 - 0.09 = 9.26
+    # Risk = 9.39 - 9.26 = 0.13
+    # Reward = 5.1% * 9.39 = 0.48
+    # R:R = 0.48 / 0.13 = 3.7 - still too high!
+    #
+    # Need to make the risk larger. With stop buffer = 1% of price:
+    # stop = 9.35 - 0.09 = 9.26
+    # entry slightly above = 9.39
+    # But the algo uses stop_buffer = max(1% of price, 3 cents)
+    # For $9.35, 1% = 9.35 cents, so buffer = 9.35 cents
+    # stop = 9.35 - 0.09 = 9.26
+    # If entry is at open+1cent = 9.39
+    # risk = 9.39 - 9.26 = 0.13 = 13 cents
+    # reward = 5.1% * 9.39 = 0.48
+    # R:R = 0.48/0.13 = 3.7
+    #
+    # To get R:R < 2, need risk > reward/2 = 0.24
+    # So we need entry - stop > 0.24
+    # If stop = pullback_low - 1%, and entry = open + 1 cent
+    # Then we need the entry bar to open much higher than pullback low
+    # Let's have entry bar open at 9.50, so entry = 9.51
+    # stop = 9.35 - 0.09 = 9.26
+    # risk = 9.51 - 9.26 = 0.25
+    # reward = 5.1% * 9.51 = 0.49
+    # R:R = 0.49/0.25 = 1.96 < 2.0 - FAIL!
+    (9.50, 9.70, 9.48, 9.65, 180000),      # GREEN entry (opens at 9.50)
+])
+
+
+# =============================================================================
+# EXPORT ALL FIXTURES
+# =============================================================================
+
+__all__ = [
+    # PASS cases
+    "MP_PASS_VALID",
+    "MP_PASS_MIN_PRIOR_MOVE",
+    "MP_PASS_MAX_PRIOR_MOVE",
+    "MP_PASS_MAX_PULLBACK",
+    "MP_PASS_MAX_DURATION",
+    "MP_PASS_MIN_GREEN_RATIO",
+    "MP_PASS_MIN_RR",
+
+    # FAIL cases
+    "MP_FAIL_BELOW_MIN_PRIOR",
+    "MP_FAIL_ABOVE_MAX_PRIOR",
+    "MP_FAIL_PULLBACK_TOO_DEEP",
+    "MP_FAIL_DURATION_TOO_LONG",
+    "MP_FAIL_GREEN_RATIO_LOW",
+    "MP_FAIL_LAST_BAR_RED",
+    "MP_FAIL_RR_TOO_LOW",
+]

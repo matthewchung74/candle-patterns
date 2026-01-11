@@ -5,9 +5,11 @@ Bull Flag Pattern Detector
 Classic momentum continuation pattern.
 
 Pattern Structure:
-1. The Pole: Strong vertical move (20%+ gain, 3-10 candles)
-2. The Flag: Consolidation with declining volume (3-10 candles, 10-25% retracement)
-3. Entry: Break above flag resistance
+1. The Pole: Strong vertical move (15%+ gain, 3-10 candles)
+2. The Flag: Tight consolidation with declining volume (1-3 candles, 10-25% retracement)
+3. Entry: Break above flag resistance (conservative)
+
+Note: Prior moves <15% with shallow pullbacks are handled by Micro Pullback pattern.
 
 Example:
            /\\
@@ -37,14 +39,14 @@ class BullFlag(PatternDetector):
     def default_config(self) -> Dict[str, Any]:
         """Default configuration for bull flag detection."""
         return {
-            # The Pole (Initial Surge)
-            "min_pole_move_pct": 20.0,  # Min 20% move in pole
+            # The Pole (Initial Surge) - 15%+ to separate from Micro Pullback
+            "min_pole_move_pct": 15.0,  # Min 15% move in pole
             "min_pole_candles": 3,  # 3-10 candles in pole
             "max_pole_candles": 10,
 
-            # The Flag (Consolidation)
-            "min_flag_candles": 3,  # 3-10 candles in flag
-            "max_flag_candles": 10,
+            # The Flag (Tight Consolidation) - 1-3 candles for quick resolution
+            "min_flag_candles": 1,  # Min 1 candle in flag
+            "max_flag_candles": 3,  # Max 3 candles (tight flag)
             "min_pullback_pct": 10.0,  # 10-25% retracement of pole
             "max_pullback_pct": 25.0,
             "volume_declining": True,  # Volume must decrease in flag
