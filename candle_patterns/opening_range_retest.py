@@ -95,6 +95,10 @@ class OpeningRangeRetest(PatternDetector):
             "confirm_hammer_wick_ratio": 2.0,  # lower_wick >= 2x body
             "confirm_strong_body_pct": 60.0,
             "confirm_strong_close_buffer": 0.10,  # close > ORH + 10% of OR range
+
+            # Retest confirmation (engulfing/pinbar) - always applied
+            "confirm_body_ratio": 0.8,  # body must be >= 80% of prior body for engulfing check
+            "confirm_wick_ratio": 2.0,   # wick multiple for pinbar-style rejection
         }
 
     def detect(
@@ -395,54 +399,13 @@ class OpeningRangeRetest(PatternDetector):
             if prev_bar["close"] >= prev_bar["open"]:
                 return self.not_detected("No retest: confirmation bar not bearish")
 
-        # Confirmation quality filter: prev bar must show strong rejection (no lookahead)
-        if self.config.get("confirmation_filter", False):
-            bar_range = prev_bar["high"] - prev_bar["low"]
-            body = abs(prev_bar["close"] - prev_bar["open"])
-            body_pct = (body / bar_range * 100) if bar_range > 0 else 0
-
-            if direction == "long":
-                lower_wick = min(prev_bar["open"], prev_bar["close"]) - prev_bar["low"]
-                upper_wick = prev_bar["high"] - max(prev_bar["open"], prev_bar["close"])
-
-                # Hammer-like: lower_wick >= 2x body AND upper_wick <= body
-                hammer_ratio = self.config.get("confirm_hammer_wick_ratio", 2.0)
-                is_hammer = (lower_wick >= hammer_ratio * body) and (upper_wick <= body)
-
-                # Strong bullish: body >= 60% AND close > ORH + 0.1*OR range
-                strong_body_pct = self.config.get("confirm_strong_body_pct", 60.0)
-                close_buffer = self.config.get("confirm_strong_close_buffer", 0.10)
-                is_strong = (body_pct >= strong_body_pct) and (prev_bar["close"] > or_high + close_buffer * or_range)
-
-                # Valid bullish: body >= 50% AND close > ORH (reclaimed level)
-                is_valid_bullish = (body_pct >= 50.0) and (prev_bar["close"] > or_high)
-
-                if not (is_hammer or is_strong or is_valid_bullish):
-                    return self.not_detected(
-                        f"Weak confirmation: not hammer (lower_wick={lower_wick:.3f}, body={body:.3f}) "
-                        f"and not strong (body_pct={body_pct:.1f}%, close={prev_bar['close']:.2f})"
-                    )
-            else:
-                upper_wick = prev_bar["high"] - max(prev_bar["open"], prev_bar["close"])
-                lower_wick = min(prev_bar["open"], prev_bar["close"]) - prev_bar["low"]
-
-                # Inverted hammer: upper_wick >= 2x body AND lower_wick <= body
-                hammer_ratio = self.config.get("confirm_hammer_wick_ratio", 2.0)
-                is_hammer = (upper_wick >= hammer_ratio * body) and (lower_wick <= body)
-
-                # Strong bearish: body >= 60% AND close < ORL - 0.1*OR range
-                strong_body_pct = self.config.get("confirm_strong_body_pct", 60.0)
-                close_buffer = self.config.get("confirm_strong_close_buffer", 0.10)
-                is_strong = (body_pct >= strong_body_pct) and (prev_bar["close"] < or_low - close_buffer * or_range)
-
-                # Valid bearish: body >= 50% AND close < ORL (reclaimed level)
-                is_valid_bearish = (body_pct >= 50.0) and (prev_bar["close"] < or_low)
-
-                if not (is_hammer or is_strong or is_valid_bearish):
-                    return self.not_detected(
-                        f"Weak confirmation: not inv hammer (upper_wick={upper_wick:.3f}, body={body:.3f}) "
-                        f"and not strong (body_pct={body_pct:.1f}%, close={prev_bar['close']:.2f})"
-                    )
+        # Confirmation: require engulfing or pinbar-style rejection at the OR level (no lookahead)
+        if direction == "long":
+            if not self._bullish_confirmation(prev_bar, entry_candle, or_high):
+                return self.not_detected("No confirmation: need bullish engulfing or pinbar at OR high")
+        else:
+            if not self._bearish_confirmation(prev_bar, entry_candle, or_low):
+                return self.not_detected("No confirmation: need bearish engulfing or pinbar at OR low")
 
         # Build result
         # Base confidence: 75% (displacement + retest)
@@ -482,6 +445,56 @@ class OpeningRangeRetest(PatternDetector):
                 "retest_zone_high": zone_high,
             },
         )
+
+    def _bullish_confirmation(self, prev_bar: pd.Series, curr_bar: pd.Series, or_high: float) -> bool:
+        """Bullish confirmation: engulfing or pinbar at OR high."""
+        body = abs(curr_bar["close"] - curr_bar["open"])
+        prev_body = abs(prev_bar["close"] - prev_bar["open"])
+        body_ratio = self.config.get("confirm_body_ratio", 0.8)
+        wick_ratio = self.config.get("confirm_wick_ratio", 2.0)
+
+        engulfing = (
+            curr_bar["close"] > curr_bar["open"]
+            and body >= prev_body * body_ratio
+            and curr_bar["close"] >= prev_bar["high"]
+        )
+
+        lower_wick = min(curr_bar["open"], curr_bar["close"]) - curr_bar["low"]
+        upper_wick = curr_bar["high"] - max(curr_bar["open"], curr_bar["close"])
+        pinbar = (
+            body > 0
+            and lower_wick >= wick_ratio * body
+            and upper_wick <= wick_ratio * body
+            and curr_bar["low"] <= or_high
+            and curr_bar["close"] > curr_bar["open"]
+        )
+
+        return engulfing or pinbar
+
+    def _bearish_confirmation(self, prev_bar: pd.Series, curr_bar: pd.Series, or_low: float) -> bool:
+        """Bearish confirmation: engulfing or pinbar at OR low."""
+        body = abs(curr_bar["close"] - curr_bar["open"])
+        prev_body = abs(prev_bar["close"] - prev_bar["open"])
+        body_ratio = self.config.get("confirm_body_ratio", 0.8)
+        wick_ratio = self.config.get("confirm_wick_ratio", 2.0)
+
+        engulfing = (
+            curr_bar["close"] < curr_bar["open"]
+            and body >= prev_body * body_ratio
+            and curr_bar["close"] <= prev_bar["low"]
+        )
+
+        upper_wick = curr_bar["high"] - max(curr_bar["open"], curr_bar["close"])
+        lower_wick = min(curr_bar["open"], curr_bar["close"]) - curr_bar["low"]
+        pinbar = (
+            body > 0
+            and upper_wick >= wick_ratio * body
+            and lower_wick <= wick_ratio * body
+            and curr_bar["high"] >= or_low
+            and curr_bar["close"] < curr_bar["open"]
+        )
+
+        return engulfing or pinbar
 
     def _trend_alignment_ok(self, df_day: pd.DataFrame, direction: str) -> bool:
         """Check 5-min EMA slope for trend alignment."""

@@ -68,6 +68,7 @@ from tests.fixtures.opening_range_retest_fixtures import (
     OPENING_RANGE_RETEST_VALID,
     OPENING_RANGE_RETEST_NO_RETEST,
     OPENING_RANGE_RETEST_OUTSIDE_WINDOW,
+    OPENING_RANGE_RETEST_FAKEOUT,
 )
 
 
@@ -326,13 +327,17 @@ class TestOpeningRangeRetest:
 
     def setup_method(self):
         """Set up test fixtures."""
-        # Disable trend alignment to keep fixtures small and deterministic
+        # Disable optional filters for deterministic fixtures
         self.detector = OpeningRangeRetest({
             "trend_alignment": False,
+            "fakeout_filter": False,
+            "choppy_filter": False,
+            "confirmation_filter": False,
+            "require_clean_breakout_bar": False,
         })
 
     def test_valid_orb_retest_detected(self):
-        """Test that a valid ORB retest is detected."""
+        """Breakout, retest, and bullish confirmation should detect."""
         result = self.detector.detect(OPENING_RANGE_RETEST_VALID)
 
         assert result.detected is True
@@ -346,6 +351,12 @@ class TestOpeningRangeRetest:
 
         assert result.detected is False
         assert "retest" in result.reason.lower()
+
+    def test_fakeout_rejected(self):
+        """Breakout followed by close back inside range should reset and reject."""
+        result = self.detector.detect(OPENING_RANGE_RETEST_FAKEOUT)
+
+        assert result.detected is False
 
     def test_outside_window_rejected(self):
         """Test that bars outside the 90-minute window are rejected."""

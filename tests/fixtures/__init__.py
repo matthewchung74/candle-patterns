@@ -88,11 +88,13 @@ from .exit_signal_fixtures import (
     MACD_CROSS_STAYS_BULLISH,
     MACD_CROSS_BULLISH_CROSS,
     MACD_CROSS_LIMIT_EQUALS_THEN_BELOW,
+    # NOTE: Bottoming tail/rejection fixtures are not defined; keep exports in sync with available fixtures
 )
 from .opening_range_retest_fixtures import (
     OPENING_RANGE_RETEST_VALID,
     OPENING_RANGE_RETEST_NO_RETEST,
     OPENING_RANGE_RETEST_OUTSIDE_WINDOW,
+    OPENING_RANGE_RETEST_FAKEOUT,
 )
 
 __all__ = [
@@ -176,4 +178,5 @@ __all__ = [
     "OPENING_RANGE_RETEST_VALID",
     "OPENING_RANGE_RETEST_NO_RETEST",
     "OPENING_RANGE_RETEST_OUTSIDE_WINDOW",
+    "OPENING_RANGE_RETEST_FAKEOUT",
 ]

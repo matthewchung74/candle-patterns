@@ -212,7 +212,8 @@ class VWAPBreak(PatternDetector):
 
         # Check if we ended below VWAP
         if below_count >= min_bars:
-            periods.append((below_start, n - 2, below_count))
+            end_idx = below_start + below_count - 1
+            periods.append((below_start, end_idx, below_count))
 
         # Return the most recent period (last in list)
         if periods:
@@ -249,12 +250,7 @@ class VWAPBreak(PatternDetector):
                 volume_spike = bar["volume"] >= volume_threshold
 
                 if self.config["close_above_vwap"]:
-                    # Verify current bar's open is also above VWAP (no lookahead)
-                    current_bar = df.iloc[-1]
-                    if current_bar["open"] > current_bar["vwap"]:
-                        return (i, volume_spike)
-                    # If current bar opened below VWAP, break might be failing
-                    return None
+                    return (i, volume_spike)
 
         return None
 
