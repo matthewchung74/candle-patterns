@@ -56,9 +56,9 @@ class MicroPullback(PatternDetector):
             # Entry trigger - Ross's style (aggressive)
             "entry": "first_green_after_pullback",
 
-            # Confirmation (advisory, not hard gates)
-            "price_above_vwap": True,
-            "macd_positive": True,
+            # Hard gates (reject pattern if not met)
+            "require_above_vwap": True,   # HARD GATE: Must be above VWAP
+            "require_macd_positive": True, # HARD GATE: MACD histogram must be > 0
 
             # Risk - percent-based stop buffer with minimum floor
             # Stop = pullback_low - max(stop_buffer_pct% of price, stop_buffer_min_cents)
@@ -279,6 +279,32 @@ class MicroPullback(PatternDetector):
             # 3-bar MACD slope: compare current MACD line to 3 bars ago
             if "macd" in macd.columns and len(macd) >= 4:
                 macd_slope_up = macd.iloc[-1]["macd"] > macd.iloc[-4]["macd"]
+
+        # Step 10: Hard gates (reject pattern if not met)
+        # Note: Use == False (not 'is False') because numpy.bool != Python bool
+        if self.config.get("require_above_vwap", True) and above_vwap == False:
+            return self.not_detected("HARD GATE: Price below VWAP")
+
+        if self.config.get("require_macd_positive", True) and macd_positive == False:
+            return self.not_detected("HARD GATE: MACD histogram negative")
+
+        # Step 10b: Minimum histogram strength threshold
+        # Data shows: histogram < 0.01 = 38% WR, histogram > 0.1 = 80% WR
+        min_histogram = self.config.get("min_histogram_threshold", 0.03)
+        if min_histogram > 0 and macd is not None and "histogram" in macd.columns:
+            current_histogram = macd.iloc[-1]["histogram"]
+            if current_histogram < min_histogram:
+                return self.not_detected(
+                    f"HARD GATE: MACD histogram {current_histogram:.4f} below threshold {min_histogram}"
+                )
+
+        # Step 10c: Minimum price threshold
+        # Data shows: $0-3 = 21% WR, $10+ = 71% WR
+        min_price = self.config.get("min_price_threshold", 0.0)
+        if min_price > 0 and entry_price < min_price:
+            return self.not_detected(
+                f"HARD GATE: Price ${entry_price:.2f} below threshold ${min_price:.2f}"
+            )
 
         # Calculate confidence (standardized system)
         # Base: 65%, Cap: 90%, Gate: 80% (enforced in trade_engine)
