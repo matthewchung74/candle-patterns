@@ -212,20 +212,24 @@ class MicroPullback(PatternDetector):
 
         stop_price = pullback_low - stop_buffer
 
-        # Step 5: Entry trigger
-        entry_candle = df.iloc[-1]
+        # Step 5: Entry trigger (no lookahead bias)
+        prev_bar = df.iloc[-2]  # Previous bar (complete)
+        entry_candle = df.iloc[-1]  # Current bar
         entry_mode = self.config.get("entry", "first_green_after_pullback")
 
         if entry_mode == "first_candle_new_high":
-            # Conservative: require break of swing high
-            if entry_candle["high"] <= swing_high:
+            # Conservative: require CONFIRMED break of swing high
+            # Use previous bar's close or current bar's open (not current bar's high)
+            breakout_confirmed = (prev_bar["close"] > swing_high) or (entry_candle["open"] > swing_high)
+            if not breakout_confirmed:
                 return self.not_detected(
-                    f"Entry candle not making new high: {entry_candle['high']:.2f} <= {swing_high:.2f}"
+                    f"No confirmed new high: prev close {prev_bar['close']:.2f}, "
+                    f"curr open {entry_candle['open']:.2f} <= swing high {swing_high:.2f}"
                 )
             entry_price = swing_high + 0.01
         else:
             # Ross's style: enter on first green after pullback
-            # Entry slightly above open of green candle
+            # Entry slightly above open of green candle (no lookahead - open is known)
             entry_price = entry_candle["open"] + 0.01
 
         # Step 6: Validate entry > stop (critical safety check)

@@ -224,28 +224,37 @@ class VWAPBreak(PatternDetector):
         self, df: pd.DataFrame, after_idx: int
     ) -> Optional[tuple]:
         """
-        Check for a break above VWAP.
+        Check for a break above VWAP (no lookahead bias).
 
         Returns:
             Tuple of (break_idx, volume_spike) or None
         """
         n = len(df)
 
+        if n < 2:
+            return None
+
         # Calculate average volume
         avg_volume = df["volume"].mean()
         volume_threshold = avg_volume * self.config["volume_spike_on_break"]
 
-        # Look for break in bars after the below period
-        for i in range(after_idx + 1, n):
+        # Look for confirmed break in COMPLETED bars only (exclude current bar)
+        # Then verify current bar's open is also above VWAP (continuation)
+        for i in range(after_idx + 1, n - 1):  # Exclude last bar (current)
             bar = df.iloc[i]
 
-            # Check if close is above VWAP
+            # Check if close is above VWAP (completed bar, so this is known)
             if bar["close"] > bar["vwap"]:
                 # Check for volume spike
                 volume_spike = bar["volume"] >= volume_threshold
 
                 if self.config["close_above_vwap"]:
-                    return (i, volume_spike)
+                    # Verify current bar's open is also above VWAP (no lookahead)
+                    current_bar = df.iloc[-1]
+                    if current_bar["open"] > current_bar["vwap"]:
+                        return (i, volume_spike)
+                    # If current bar opened below VWAP, break might be failing
+                    return None
 
         return None
 
@@ -254,6 +263,7 @@ class VWAPBreak(PatternDetector):
     ) -> Optional[dict]:
         """
         Check for VWAP Hold variant (pullback to VWAP, holds as support).
+        Uses only completed bar data (no lookahead bias).
 
         Returns:
             Dict with hold details or None
@@ -263,10 +273,14 @@ class VWAPBreak(PatternDetector):
 
         n = len(df)
 
+        if n < 3:
+            return None
+
         # Look for pullback to VWAP that holds
-        for i in range(after_idx + 1, n - 1):
+        # Only use COMPLETED bars for confirmation, then check current bar's open
+        for i in range(after_idx + 1, n - 2):  # Exclude last 2 bars
             bar = df.iloc[i]
-            next_bar = df.iloc[i + 1] if i + 1 < n else None
+            next_bar = df.iloc[i + 1]  # This is now guaranteed to be completed
 
             # Check if low touches VWAP (within 0.5%)
             vwap = bar["vwap"]
@@ -274,11 +288,14 @@ class VWAPBreak(PatternDetector):
 
             if abs(bar["low"] - vwap) <= touch_threshold:
                 # VWAP touched, check if it held (next bar green and above VWAP)
-                if next_bar is not None:
-                    if (
-                        next_bar["close"] > next_bar["open"]  # Green
-                        and next_bar["close"] > next_bar["vwap"]  # Above VWAP
-                    ):
+                # next_bar is completed, so using close is fine
+                if (
+                    next_bar["close"] > next_bar["open"]  # Green
+                    and next_bar["close"] > next_bar["vwap"]  # Above VWAP
+                ):
+                    # Verify current bar's open confirms continuation (no lookahead)
+                    current_bar = df.iloc[-1]
+                    if current_bar["open"] > current_bar["vwap"]:
                         return {
                             "touch_idx": i,
                             "entry_idx": i + 1,

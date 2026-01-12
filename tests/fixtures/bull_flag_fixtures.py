@@ -39,7 +39,7 @@ def _make_bars(data: list) -> pd.DataFrame:
 # BF_PASS_VALID: Standard valid Bull Flag pattern
 # Pole: 20% move, 4 candles
 # Flag: 2 candles, 12% pullback, declining volume
-# Breakout: clear break above flag high
+# Breakout: CONFIRMED break (bar 7 opens above flag high OR bar 6 closes above flag high)
 # -----------------------------------------------------------------------------
 BF_PASS_VALID = _make_bars([
     # Pre-pole bars
@@ -53,11 +53,11 @@ BF_PASS_VALID = _make_bars([
 
     # Flag: 2 candles, 12% pullback, declining volume
     # 12% from 4.82 → low = 4.82 * 0.88 = 4.24
-    (4.80, 4.55, 4.35, 4.40, 350000),   # bar 5: red, volume declining
-    (4.40, 4.50, 4.24, 4.45, 250000),   # bar 6: red (flag low: 4.24, flag high: 4.55)
+    (4.80, 4.55, 4.35, 4.40, 350000),   # bar 5: red, volume declining (flag high: 4.55)
+    (4.40, 4.50, 4.24, 4.58, 250000),   # bar 6: CLOSES above flag high 4.55 (confirmed breakout)
 
-    # Breakout: clear break above flag high (4.55)
-    (4.45, 4.75, 4.42, 4.70, 700000),   # bar 7: BREAKOUT above 4.55
+    # Entry bar: opens above flag high (gap up confirms breakout)
+    (4.60, 4.75, 4.55, 4.70, 700000),   # bar 7: opens at 4.60 > 4.55
 ])
 
 
@@ -76,12 +76,12 @@ BF_PASS_MIN_POLE_MOVE = _make_bars([
     (4.22, 4.48, 4.20, 4.45, 600000),   # bar 3: green +5.2%
     (4.45, 4.72, 4.42, 4.70, 700000),   # bar 4: green (pole high: 4.72, 18% from 4.00)
 
-    # Flag: 2 candles, 11% pullback, declining volume
+    # Flag: 2 candles, 11% pullback, declining volume (flag high: 4.52)
     (4.70, 4.52, 4.22, 4.28, 350000),   # bar 5: red (low: 4.22 = 10.6% pullback)
-    (4.28, 4.45, 4.20, 4.40, 250000),   # bar 6: flag (high: 4.52, low: 4.20)
+    (4.28, 4.45, 4.20, 4.55, 250000),   # bar 6: CLOSES above flag high 4.52
 
-    # Breakout
-    (4.40, 4.75, 4.38, 4.70, 650000),   # bar 7: BREAKOUT above 4.52
+    # Breakout: opens above flag high
+    (4.56, 4.75, 4.52, 4.70, 650000),   # bar 7: opens at 4.56 > 4.52
 ])
 
 
@@ -100,11 +100,11 @@ BF_PASS_MIN_POLE_CANDLES = _make_bars([
     (4.32, 4.62, 4.30, 4.60, 700000),   # bar 4: green +6.5%
     (4.60, 4.82, 4.58, 4.80, 800000),   # bar 5: green (pole high: 4.82, 20.5% from 4.00)
 
-    # Flag: 1 candle
-    (4.80, 4.55, 4.30, 4.40, 300000),   # bar 6: (flag low: 4.30, flag high: 4.55)
+    # Flag: 1 candle (flag high: 4.55)
+    (4.80, 4.55, 4.30, 4.58, 300000),   # bar 6: CLOSES above flag high 4.55
 
-    # Breakout
-    (4.40, 4.75, 4.38, 4.70, 700000),   # bar 7: BREAKOUT
+    # Breakout: opens above flag high
+    (4.60, 4.75, 4.55, 4.70, 700000),   # bar 7: opens at 4.60 > 4.55
 ])
 
 
@@ -123,13 +123,13 @@ BF_PASS_MAX_FLAG_CANDLES = _make_bars([
     (4.42, 4.68, 4.40, 4.65, 700000),   # bar 3
     (4.65, 4.88, 4.62, 4.85, 800000),   # bar 4: pole high: 4.88, 22% from 4.00
 
-    # Flag: 3 candles with tight range (declining volume)
+    # Flag: 3 candles with tight range (declining volume, flag high: 4.60)
     (4.85, 4.60, 4.42, 4.48, 400000),   # bar 5: red pullback
     (4.48, 4.55, 4.38, 4.50, 300000),   # bar 6: consolidating
-    (4.50, 4.52, 4.35, 4.48, 200000),   # bar 7: flag low: 4.35, flag high: 4.60
+    (4.50, 4.52, 4.35, 4.62, 200000),   # bar 7: CLOSES above flag high 4.60
 
-    # Breakout
-    (4.48, 4.82, 4.45, 4.78, 700000),   # bar 8: BREAKOUT above 4.60
+    # Breakout: opens above flag high
+    (4.65, 4.82, 4.60, 4.78, 700000),   # bar 8: opens at 4.65 > 4.60
 ])
 
 
@@ -149,12 +149,11 @@ BF_PASS_MIN_FLAG_CANDLE = _make_bars([
     (4.42, 4.68, 4.40, 4.65, 700000),   # bar 4
     (4.65, 4.88, 4.62, 4.85, 800000),   # bar 5: pole high: 4.88, 22% from 4.00
 
-    # Flag: exactly 1 candle, 11% pullback with tight range
-    # 11% from 4.88 = 4.34
-    (4.85, 4.60, 4.35, 4.50, 300000),   # bar 6: single flag (low: 4.35, high: 4.60)
+    # Flag: exactly 1 candle (flag high: 4.60)
+    (4.85, 4.60, 4.35, 4.62, 300000),   # bar 6: CLOSES above flag high 4.60
 
-    # Breakout
-    (4.50, 4.85, 4.48, 4.80, 700000),   # bar 7: BREAKOUT above 4.60
+    # Breakout: opens above flag high
+    (4.65, 4.85, 4.60, 4.80, 700000),   # bar 7: opens at 4.65 > 4.60
 ])
 
 
@@ -172,12 +171,12 @@ BF_PASS_MIN_PULLBACK = _make_bars([
     (4.52, 4.82, 4.50, 4.80, 700000),   # bar 3
     (4.80, 5.02, 4.78, 5.00, 800000),   # bar 4: pole high: 5.02, 25.5% from 4.00
 
-    # Flag: 10.1% pullback from 5.02 → low = 5.02 * 0.899 = 4.51
+    # Flag: 10.1% pullback from 5.02 (flag high: 4.70)
     (5.00, 4.70, 4.52, 4.55, 350000),   # bar 5: (low: 4.52 = 10% pullback)
-    (4.55, 4.68, 4.50, 4.62, 250000),   # bar 6: flag high: 4.70
+    (4.55, 4.68, 4.50, 4.72, 250000),   # bar 6: CLOSES above flag high 4.70
 
-    # Breakout
-    (4.62, 4.90, 4.60, 4.85, 700000),   # bar 7: BREAKOUT above 4.70
+    # Breakout: opens above flag high
+    (4.75, 4.90, 4.70, 4.85, 700000),   # bar 7: opens at 4.75 > 4.70
 ])
 
 
@@ -195,12 +194,12 @@ BF_PASS_MAX_PULLBACK = _make_bars([
     (4.68, 5.08, 4.65, 5.05, 800000),   # bar 3
     (5.05, 5.42, 5.02, 5.40, 900000),   # bar 4: pole high: 5.42, 35.5% from 4.00
 
-    # Flag: 24.5% pullback from 5.42 → low = 5.42 * 0.755 = 4.09
+    # Flag: 24.5% pullback from 5.42 (flag high: 4.50)
     (5.40, 4.50, 4.15, 4.25, 400000),   # bar 5: big red
-    (4.25, 4.45, 4.10, 4.35, 300000),   # bar 6: (low: 4.10 = 24.4% pullback, high: 4.50)
+    (4.25, 4.45, 4.10, 4.52, 300000),   # bar 6: CLOSES above flag high 4.50
 
-    # Breakout
-    (4.35, 4.75, 4.32, 4.70, 700000),   # bar 7: BREAKOUT above 4.50
+    # Breakout: opens above flag high
+    (4.55, 4.75, 4.50, 4.70, 700000),   # bar 7: opens at 4.55 > 4.50
 ])
 
 
@@ -218,13 +217,12 @@ BF_PASS_MIN_RR = _make_bars([
     (4.20, 4.42, 4.18, 4.40, 600000),   # bar 3
     (4.40, 4.61, 4.38, 4.60, 700000),   # bar 4: pole high: 4.61, 15.25% from 4.00
 
-    # Flag: 12% pullback for moderate R:R
-    # 12% from 4.61 → low = 4.06
+    # Flag: 12% pullback (flag high: 4.35)
     (4.60, 4.35, 4.10, 4.15, 350000),   # bar 5
-    (4.15, 4.32, 4.05, 4.28, 250000),   # bar 6: flag low: 4.05, flag high: 4.35
+    (4.15, 4.32, 4.05, 4.38, 250000),   # bar 6: CLOSES above flag high 4.35
 
-    # Breakout
-    (4.28, 4.55, 4.25, 4.50, 650000),   # bar 7: BREAKOUT
+    # Breakout: opens above flag high
+    (4.40, 4.55, 4.35, 4.50, 650000),   # bar 7: opens at 4.40 > 4.35
 ])
 
 

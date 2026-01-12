@@ -43,12 +43,15 @@ _ORB_VALID_DATA = [
     (100.7, 101.2, 100.7, 101.15, 200000),
 
     # Drift above OR
-    (101.0, 101.1, 100.9, 101.0, 110000),
-    (101.0, 101.1, 100.9, 101.0, 110000),
-    (101.0, 101.1, 100.9, 101.0, 110000),
+    (101.0, 101.1, 100.9, 101.05, 110000),  # Green
+    (101.0, 101.1, 100.9, 101.05, 110000),  # Green
 
-    # Retest (last bar) within OR high zone - must be BULLISH (close > open)
-    (100.4, 100.9, 100.4, 100.7, 150000),  # Green bar: O=100.4, H=100.9, L=100.4, C=100.7
+    # Confirmation bar: MUST be bullish and close above OR high (100.5)
+    # This is prev_bar for lookahead-free detection
+    (100.4, 100.9, 100.4, 100.8, 110000),  # Green bar: O=100.4, C=100.8 > OR high 100.5
+
+    # Entry candle: open above OR high confirms breakout continuation
+    (100.7, 100.9, 100.6, 100.85, 150000),  # Opens at 100.7 > OR high 100.5
 ]
 
 OPENING_RANGE_RETEST_VALID = _make_bars(
@@ -61,9 +64,28 @@ OPENING_RANGE_RETEST_VALID = _make_bars(
 # ORB RETEST - NO RETEST
 # =============================================================================
 
-_ORB_NO_RETEST_DATA = _ORB_VALID_DATA[:-1] + [
-    # Last bar does not retest zone
-    (101.0, 101.2, 100.9, 101.1, 120000),
+# Create separate data that lacks a proper confirmation bar above OR high
+_ORB_NO_RETEST_DATA = [
+    # Opening Range (9:30-9:34)
+    (100.0, 100.2, 99.7, 100.1, 100000),
+    (100.1, 100.5, 99.8, 100.4, 100000),  # OR high = 100.5
+    (100.4, 100.5, 99.9, 100.0, 100000),
+    (100.0, 100.3, 99.6, 100.0, 100000),
+    (100.0, 100.4, 99.5, 99.9, 100000),   # OR low = 99.5
+
+    # Post-OR drift
+    (99.9, 100.2, 99.9, 100.1, 90000),
+
+    # Breakout with displacement + FVG (strong body)
+    (100.7, 101.2, 100.7, 101.15, 200000),
+
+    # Drift above OR - stays above, no retest
+    (101.0, 101.1, 100.9, 101.05, 110000),
+    (101.0, 101.2, 100.95, 101.1, 110000),
+    (101.1, 101.3, 101.0, 101.2, 110000),
+
+    # Last bar still above zone - no retest
+    (101.2, 101.4, 101.1, 101.3, 120000),
 ]
 
 OPENING_RANGE_RETEST_NO_RETEST = _make_bars(
@@ -76,9 +98,10 @@ OPENING_RANGE_RETEST_NO_RETEST = _make_bars(
 # ORB RETEST - OUTSIDE WINDOW
 # =============================================================================
 
-_ORB_OUTSIDE_WINDOW = _ORB_VALID_DATA + [
-    # Extend beyond 11:00 AM ET
-    (100.9, 101.0, 100.8, 100.9, 90000),
+# Just extend beyond 11:00 AM ET with many padding bars
+_ORB_OUTSIDE_WINDOW = _ORB_VALID_DATA[:11] + [
+    # Extend beyond 11:00 AM ET (need 90+ mins of bars)
+    (100.9, 101.0, 100.8, 100.95, 90000),
 ] * 95  # Push last bar past 11:00
 
 OPENING_RANGE_RETEST_OUTSIDE_WINDOW = _make_bars(

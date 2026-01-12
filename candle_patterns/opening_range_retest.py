@@ -335,11 +335,15 @@ class OpeningRangeRetest(PatternDetector):
             entry_price = or_low
             stop_price = or_low + (self.config["stop_buffer_cents"] / 100)
 
-        # Retest must be the most recent bar (current bar)
-        last_bar = df_day.iloc[-1]
+        # Retest must be the most recent bar
+        # Use prev_bar for confirmation (completed), entry_candle for current bar (only open is known)
+        if len(df_day) < 2:
+            return self.not_detected("Insufficient bars for retest")
+        prev_bar = df_day.iloc[-2]  # Completed bar (for confirmation)
+        entry_candle = df_day.iloc[-1]  # Current bar (only use open)
         last_idx = df_day.index[-1]
         breakout_time = df_day.iloc[breakout_idx]["ts_et"]
-        if last_bar["ts_et"] <= breakout_time:
+        if entry_candle["ts_et"] <= breakout_time:
             return self.not_detected("Waiting for retest")
 
         # Check for actual pullback to retest zone AFTER breakout
@@ -367,28 +371,39 @@ class OpeningRangeRetest(PatternDetector):
             return self.not_detected(f"No retest: price never pulled back to zone (${zone_low:.2f}-${zone_high:.2f})")
 
         # Retest confirmation: after pullback, price must reclaim the OR level
-        # For LONG: bar's high must be above OR high AND bar must be bullish (green)
-        # For SHORT: bar's low must be below OR low AND bar must be bearish (red)
+        # Use prev_bar for confirmation (no lookahead bias)
+        # For LONG: prev bar closed above OR high OR current bar opened above OR high
+        # For SHORT: prev bar closed below OR low OR current bar opened below OR low
         if direction == "long":
-            if last_bar["high"] <= or_high:
-                return self.not_detected("No retest: high not above OR high")
-            if last_bar["close"] <= last_bar["open"]:
-                return self.not_detected("No retest: entry bar not bullish")
+            retest_confirmed = (prev_bar["close"] > or_high) or (entry_candle["open"] > or_high)
+            if not retest_confirmed:
+                return self.not_detected(
+                    f"No retest: prev close {prev_bar['close']:.2f}, "
+                    f"curr open {entry_candle['open']:.2f} <= OR high {or_high:.2f}"
+                )
+            # Prev bar should be bullish (bounce confirmation)
+            if prev_bar["close"] <= prev_bar["open"]:
+                return self.not_detected("No retest: confirmation bar not bullish")
         else:
-            if last_bar["low"] >= or_low:
-                return self.not_detected("No retest: low not below OR low")
-            if last_bar["close"] >= last_bar["open"]:
-                return self.not_detected("No retest: entry bar not bearish")
+            retest_confirmed = (prev_bar["close"] < or_low) or (entry_candle["open"] < or_low)
+            if not retest_confirmed:
+                return self.not_detected(
+                    f"No retest: prev close {prev_bar['close']:.2f}, "
+                    f"curr open {entry_candle['open']:.2f} >= OR low {or_low:.2f}"
+                )
+            # Prev bar should be bearish (bounce confirmation)
+            if prev_bar["close"] >= prev_bar["open"]:
+                return self.not_detected("No retest: confirmation bar not bearish")
 
-        # Confirmation quality filter: entry bar must show strong rejection
+        # Confirmation quality filter: prev bar must show strong rejection (no lookahead)
         if self.config.get("confirmation_filter", False):
-            bar_range = last_bar["high"] - last_bar["low"]
-            body = abs(last_bar["close"] - last_bar["open"])
+            bar_range = prev_bar["high"] - prev_bar["low"]
+            body = abs(prev_bar["close"] - prev_bar["open"])
             body_pct = (body / bar_range * 100) if bar_range > 0 else 0
 
             if direction == "long":
-                lower_wick = min(last_bar["open"], last_bar["close"]) - last_bar["low"]
-                upper_wick = last_bar["high"] - max(last_bar["open"], last_bar["close"])
+                lower_wick = min(prev_bar["open"], prev_bar["close"]) - prev_bar["low"]
+                upper_wick = prev_bar["high"] - max(prev_bar["open"], prev_bar["close"])
 
                 # Hammer-like: lower_wick >= 2x body AND upper_wick <= body
                 hammer_ratio = self.config.get("confirm_hammer_wick_ratio", 2.0)
@@ -397,19 +412,19 @@ class OpeningRangeRetest(PatternDetector):
                 # Strong bullish: body >= 60% AND close > ORH + 0.1*OR range
                 strong_body_pct = self.config.get("confirm_strong_body_pct", 60.0)
                 close_buffer = self.config.get("confirm_strong_close_buffer", 0.10)
-                is_strong = (body_pct >= strong_body_pct) and (last_bar["close"] > or_high + close_buffer * or_range)
+                is_strong = (body_pct >= strong_body_pct) and (prev_bar["close"] > or_high + close_buffer * or_range)
 
                 # Valid bullish: body >= 50% AND close > ORH (reclaimed level)
-                is_valid_bullish = (body_pct >= 50.0) and (last_bar["close"] > or_high)
+                is_valid_bullish = (body_pct >= 50.0) and (prev_bar["close"] > or_high)
 
                 if not (is_hammer or is_strong or is_valid_bullish):
                     return self.not_detected(
                         f"Weak confirmation: not hammer (lower_wick={lower_wick:.3f}, body={body:.3f}) "
-                        f"and not strong (body_pct={body_pct:.1f}%, close={last_bar['close']:.2f})"
+                        f"and not strong (body_pct={body_pct:.1f}%, close={prev_bar['close']:.2f})"
                     )
             else:
-                upper_wick = last_bar["high"] - max(last_bar["open"], last_bar["close"])
-                lower_wick = min(last_bar["open"], last_bar["close"]) - last_bar["low"]
+                upper_wick = prev_bar["high"] - max(prev_bar["open"], prev_bar["close"])
+                lower_wick = min(prev_bar["open"], prev_bar["close"]) - prev_bar["low"]
 
                 # Inverted hammer: upper_wick >= 2x body AND lower_wick <= body
                 hammer_ratio = self.config.get("confirm_hammer_wick_ratio", 2.0)
@@ -418,15 +433,15 @@ class OpeningRangeRetest(PatternDetector):
                 # Strong bearish: body >= 60% AND close < ORL - 0.1*OR range
                 strong_body_pct = self.config.get("confirm_strong_body_pct", 60.0)
                 close_buffer = self.config.get("confirm_strong_close_buffer", 0.10)
-                is_strong = (body_pct >= strong_body_pct) and (last_bar["close"] < or_low - close_buffer * or_range)
+                is_strong = (body_pct >= strong_body_pct) and (prev_bar["close"] < or_low - close_buffer * or_range)
 
                 # Valid bearish: body >= 50% AND close < ORL (reclaimed level)
-                is_valid_bearish = (body_pct >= 50.0) and (last_bar["close"] < or_low)
+                is_valid_bearish = (body_pct >= 50.0) and (prev_bar["close"] < or_low)
 
                 if not (is_hammer or is_strong or is_valid_bearish):
                     return self.not_detected(
                         f"Weak confirmation: not inv hammer (upper_wick={upper_wick:.3f}, body={body:.3f}) "
-                        f"and not strong (body_pct={body_pct:.1f}%, close={last_bar['close']:.2f})"
+                        f"and not strong (body_pct={body_pct:.1f}%, close={prev_bar['close']:.2f})"
                     )
 
         # Build result

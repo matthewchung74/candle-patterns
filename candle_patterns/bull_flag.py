@@ -138,11 +138,20 @@ class BullFlag(PatternDetector):
                 # Advisory warning, not a hard fail
                 pass
 
-        # Step 5: Check for breakout
-        entry_candle = df.iloc[-1]
-        if entry_candle["high"] <= flag_high:
+        # Step 5: Check for breakout (no lookahead bias)
+        # Use PREVIOUS bar's close to confirm breakout (not current bar's high)
+        # This ensures we only detect pattern AFTER breakout is confirmed
+        prev_bar = df.iloc[-2]  # Previous bar (complete)
+        entry_candle = df.iloc[-1]  # Current bar (for confirmations only)
+
+        # Breakout confirmed if previous bar CLOSED above flag high
+        # OR current bar OPENED above flag high (gap up breakout)
+        breakout_confirmed = (prev_bar["close"] > flag_high) or (entry_candle["open"] > flag_high)
+
+        if not breakout_confirmed:
             return self.not_detected(
-                f"No breakout yet: {entry_candle['high']:.2f} <= flag high {flag_high:.2f}"
+                f"No confirmed breakout: prev close {prev_bar['close']:.2f}, "
+                f"curr open {entry_candle['open']:.2f} <= flag high {flag_high:.2f}"
             )
 
         # Step 6: Calculate entry and stop
