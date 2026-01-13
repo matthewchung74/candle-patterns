@@ -142,3 +142,11 @@ class TestORBRuleCoverage:
         result = self.det.detect(OPENING_RANGE_RETEST_OUTSIDE_WINDOW)
         assert result.detected is False
         assert "window" in (result.reason or "").lower()
+
+    def test_confirmation_bar_must_touch_zone(self):
+        """Confirmation bar that never dips into retest zone should reject."""
+        from tests.fixtures.opening_range_retest_fixtures import OPENING_RANGE_RETEST_CONFIRM_NO_TOUCH
+
+        result = self.det.detect(OPENING_RANGE_RETEST_CONFIRM_NO_TOUCH)
+        assert result.detected is False
+        assert "confirmation bar" in (result.reason or "").lower()

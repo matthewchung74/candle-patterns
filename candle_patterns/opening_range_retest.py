@@ -385,6 +385,11 @@ class OpeningRangeRetest(PatternDetector):
                     f"No retest: prev close {prev_bar['close']:.2f}, "
                     f"curr open {entry_candle['open']:.2f} <= OR high {or_high:.2f}"
                 )
+            # Confirmation bar should participate in the retest (touch/dip into zone)
+            if prev_bar["low"] > zone_high:
+                return self.not_detected(
+                    f"No retest: confirmation bar low {prev_bar['low']:.2f} above zone high {zone_high:.2f}"
+                )
             # Prev bar should be bullish (bounce confirmation)
             if prev_bar["close"] <= prev_bar["open"]:
                 return self.not_detected("No retest: confirmation bar not bullish")
@@ -394,6 +399,10 @@ class OpeningRangeRetest(PatternDetector):
                 return self.not_detected(
                     f"No retest: prev close {prev_bar['close']:.2f}, "
                     f"curr open {entry_candle['open']:.2f} >= OR low {or_low:.2f}"
+                )
+            if prev_bar["high"] < zone_low:
+                return self.not_detected(
+                    f"No retest: confirmation bar high {prev_bar['high']:.2f} below zone low {zone_low:.2f}"
                 )
             # Prev bar should be bearish (bounce confirmation)
             if prev_bar["close"] >= prev_bar["open"]:

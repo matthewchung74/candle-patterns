@@ -118,3 +118,34 @@ OPENING_RANGE_RETEST_OUTSIDE_WINDOW = _make_bars(
     _ORB_OUTSIDE_WINDOW,
     datetime(2026, 1, 6, 9, 30),
 )
+
+
+# =============================================================================
+# ORB RETEST - CONFIRMATION BAR TOO HIGH (NO TOUCH OF ZONE)
+# =============================================================================
+
+_ORB_CONFIRM_NO_TOUCH = [
+    # Opening Range (ORH=100.5, ORL=99.5)
+    (100.0, 100.2, 99.7, 100.1, 100000),
+    (100.1, 100.5, 99.8, 100.4, 100000),
+    (100.4, 100.5, 99.9, 100.0, 100000),
+    (100.0, 100.3, 99.6, 100.0, 100000),
+    (100.0, 100.4, 99.5, 99.9, 100000),
+
+    # Breakout bar
+    (100.4, 101.0, 100.3, 100.9, 150000),
+
+    # Retest bar touches ORH (low <= zone_high)
+    (100.6, 100.9, 100.45, 100.75, 180000),
+
+    # Next bar is bullish but never dips into the zone (low > zone_high ~100.7)
+    (101.0, 101.3, 100.8, 101.2, 170000),
+
+    # Entry candle (current) - keeps sequence length consistent
+    (101.2, 101.4, 101.0, 101.3, 160000),
+]
+
+OPENING_RANGE_RETEST_CONFIRM_NO_TOUCH = _make_bars(
+    _ORB_CONFIRM_NO_TOUCH,
+    datetime(2026, 1, 6, 9, 30),
+)
