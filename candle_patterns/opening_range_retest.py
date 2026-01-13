@@ -39,6 +39,11 @@ class OpeningRangeRetest(PatternDetector):
             "displacement_min_cents": 5,  # Min 5 cents beyond OR level
             "min_body_pct": 50.0,  # Candle body must be >= 50% of range
 
+            # Breakout trigger: "close" (conservative) or "high" (aggressive)
+            # "close" = bar must close above OR high + displacement
+            # "high" = bar high touching above OR high + displacement triggers breakout
+            "breakout_trigger": "close",
+
             # Retest zone (percent of OR range)
             "retest_zone_or_pct": 0.20,  # 20% of OR range
 
@@ -48,8 +53,8 @@ class OpeningRangeRetest(PatternDetector):
             # One-shot rule: only first valid retest
             "one_shot": True,
 
-            # Stop buffer (widened from 10 to 15 for volatile ETFs)
-            "stop_buffer_cents": 15,
+            # Stop buffer (percentage of OR range - scales with volatility)
+            "stop_buffer_or_pct": 0.15,  # 15% of OR range
 
             # Trend alignment (5-min EMA slope)
             "trend_alignment": True,
@@ -74,6 +79,10 @@ class OpeningRangeRetest(PatternDetector):
             "fakeout_filter": False,
             "fakeout_bars": 2,  # Legacy fallback (now check all bars to retest)
 
+            # Opposite-side invalidation: if price crosses the other side of OR before retest, invalidate
+            # Default False to allow setups even if both sides were probed early
+            "invalidate_on_opposite_break": False,
+
             # Choppy filter: reject if pre-breakout bars show consolidation
             # Triggers if 2 of 3 conditions met:
             # (a) body_pct < 40% for >= 60% of bars
@@ -97,8 +106,26 @@ class OpeningRangeRetest(PatternDetector):
             "confirm_strong_close_buffer": 0.10,  # close > ORH + 10% of OR range
 
             # Retest confirmation (engulfing/pinbar) - always applied
+            # Mode: "strict" (engulfing/pinbar) or "basic" (reclaim without pattern check)
+            "confirmation_mode": "basic",
             "confirm_body_ratio": 0.8,  # body must be >= 80% of prior body for engulfing check
             "confirm_wick_ratio": 2.0,   # wick multiple for pinbar-style rejection
+
+            # MACD histogram hard gate (filters weak momentum entries)
+            # Set to 0 to disable
+            "min_histogram_threshold": 0,
+
+            # MACD exit confirmation (delay exit to avoid false signals)
+            # Require N consecutive bars with MACD below signal before exiting
+            "macd_exit_confirmation_bars": 2,
+
+            # Disable MACD cross exit (often premature - let other exits handle it)
+            "disable_macd_exit": False,
+
+            # Pullback volume filter (filters weak bounce / strong selling)
+            # Avg volume of RED bars during pullback must be < bounce bar volume
+            # Healthy pullback = low volume selling, high volume bounce
+            "require_healthy_pullback_volume": True,
         }
 
     def detect(
@@ -193,8 +220,12 @@ class OpeningRangeRetest(PatternDetector):
             prev = df_day.iloc[idx - 1] if idx > 0 else None
             body_pct = self.candle_body_pct(row)
 
+            # Breakout trigger: use "high"/"low" or "close" based on config
+            use_high_trigger = self.config.get("breakout_trigger", "close") == "high"
+
             # Long breakout
-            if row["close"] > or_high + disp_threshold and body_pct >= self.config["min_body_pct"]:
+            breakout_price = row["high"] if use_high_trigger else row["close"]
+            if breakout_price > or_high + disp_threshold and body_pct >= self.config["min_body_pct"]:
                 if prev is None:
                     continue
                 fvg = prev["high"] < row["low"]
@@ -210,7 +241,8 @@ class OpeningRangeRetest(PatternDetector):
                 break
 
             # Short breakout
-            if row["close"] < or_low - disp_threshold and body_pct >= self.config["min_body_pct"]:
+            breakout_price = row["low"] if use_high_trigger else row["close"]
+            if breakout_price < or_low - disp_threshold and body_pct >= self.config["min_body_pct"]:
                 if prev is None:
                     continue
                 fvg = prev["low"] > row["high"]
@@ -290,25 +322,21 @@ class OpeningRangeRetest(PatternDetector):
             if not trend_ok:
                 return self.not_detected("Trend alignment failed")
 
-        # Check for breakout invalidation: if price EVER broke opposite side, setup is invalid
-        # For LONG breakout: invalidate if any close broke below OR low (anytime after OR formed)
-        # For SHORT breakout: invalidate if any close broke above OR high (anytime after OR formed)
-        # Bug fix: Check ALL bars after OR formation, not just after breakout candle
-        # This catches cases like TQQQ Jan 2, 2026 where price broke OR low at 9:39-9:40
-        # BEFORE breaking above OR high at 9:47
-        or_end_idx = len(or_bars)  # First bar after OR formation
-        post_or_bars = df_day.iloc[or_end_idx:]
-        for _, row in post_or_bars.iterrows():
-            close = row["close"]
-            if direction == "long" and close <= or_low:
-                return self.not_detected("Breakout invalidated: price broke below OR low before entry")
-            if direction == "short" and close >= or_high:
-                return self.not_detected("Breakout invalidated: price broke above OR high before entry")
+        # Optional opposite-side invalidation: by default, allow setups even if price briefly crossed the other side
+        if self.config.get("invalidate_on_opposite_break", False):
+            or_end_idx = len(or_bars)  # First bar after OR formation
+            post_or_bars = df_day.iloc[or_end_idx:]
+            for _, row in post_or_bars.iterrows():
+                close = row["close"]
+                if direction == "long" and close <= or_low:
+                    return self.not_detected("Breakout invalidated: price broke below OR low before entry")
+                if direction == "short" and close >= or_high:
+                    return self.not_detected("Breakout invalidated: price broke above OR high before entry")
 
         # Check for clean handle (at least one bar completely above/below OR level)
         # between breakout and retest. This ensures real follow-through before pullback,
         # not just a wick through OR that immediately reverses.
-        if self.config.get("require_clean_breakout_bar", True):
+        if self.config.get("require_clean_breakout_bar", False):
             clean_bar_found = False
             # Check bars AFTER breakout (the "handle" before retest)
             handle_bars = df_day.iloc[breakout_idx + 1:]  # Skip breakout bar itself
@@ -328,16 +356,18 @@ class OpeningRangeRetest(PatternDetector):
 
         # Retest zone
         zone_size = or_range * self.config["retest_zone_or_pct"]
+        # Stop buffer scales with OR range (wider stops on volatile days)
+        stop_buffer = or_range * self.config["stop_buffer_or_pct"]
         if direction == "long":
             zone_low = or_high - zone_size
             zone_high = or_high + zone_size
             entry_price = or_high
-            stop_price = or_high - (self.config["stop_buffer_cents"] / 100)
+            stop_price = or_high - stop_buffer
         else:
             zone_low = or_low - zone_size
             zone_high = or_low + zone_size
             entry_price = or_low
-            stop_price = or_low + (self.config["stop_buffer_cents"] / 100)
+            stop_price = or_low + stop_buffer
 
         # Retest must be the most recent bar
         # Use prev_bar for confirmation (completed), entry_candle for current bar (only open is known)
@@ -350,25 +380,37 @@ class OpeningRangeRetest(PatternDetector):
         if entry_candle["ts_et"] <= breakout_time:
             return self.not_detected("Waiting for retest")
 
-        # Check for actual pullback to retest zone AFTER breakout
+        # Require at least 1 bar between breakout and confirmation bar for a proper retest
+        # breakout_idx should be at least 2 bars before entry (i.e., before prev_bar)
+        # This ensures there's room for an actual pullback, not just immediate entry after breakout
+        if breakout_idx >= len(df_day) - 2:
+            return self.not_detected(
+                f"No retest: breakout too recent (need pullback between breakout and entry)"
+            )
+
+        # Check for actual pullback to retest zone AFTER breakout but BEFORE bounce bar
         # Bug fix: Previously the zone was calculated but never validated
         # For LONG: price must pull back INTO the retest zone (low touches zone)
         # For SHORT: price must pull back INTO the retest zone (high touches zone)
-        post_breakout = df_day.iloc[breakout_idx + 1:]
+        # Only check bars between breakout and prev_bar (exclude both prev_bar and entry bar)
+        post_breakout = df_day.iloc[breakout_idx + 1:-2]  # Exclude bounce bar and entry bar
         pullback_found = False
+        pullback_start_idx = None  # Track when pullback to retest zone started
 
-        for _, row in post_breakout.iterrows():
+        for i, (idx, row) in enumerate(post_breakout.iterrows()):
             if direction == "long":
                 # For longs: check if bar's low reached into the retest zone
                 # Zone is centered around OR high: zone_low to zone_high
                 if row["low"] <= zone_high:
                     pullback_found = True
+                    pullback_start_idx = breakout_idx + 1 + i  # Absolute index in df_day
                     break
             else:
                 # For shorts: check if bar's high reached into the retest zone
                 # Zone is centered around OR low: zone_low to zone_high
                 if row["high"] >= zone_low:
                     pullback_found = True
+                    pullback_start_idx = breakout_idx + 1 + i  # Absolute index in df_day
                     break
 
         if not pullback_found:
@@ -385,11 +427,6 @@ class OpeningRangeRetest(PatternDetector):
                     f"No retest: prev close {prev_bar['close']:.2f}, "
                     f"curr open {entry_candle['open']:.2f} <= OR high {or_high:.2f}"
                 )
-            # Confirmation bar should participate in the retest (touch/dip into zone)
-            if prev_bar["low"] > zone_high:
-                return self.not_detected(
-                    f"No retest: confirmation bar low {prev_bar['low']:.2f} above zone high {zone_high:.2f}"
-                )
             # Prev bar should be bullish (bounce confirmation)
             if prev_bar["close"] <= prev_bar["open"]:
                 return self.not_detected("No retest: confirmation bar not bullish")
@@ -400,21 +437,72 @@ class OpeningRangeRetest(PatternDetector):
                     f"No retest: prev close {prev_bar['close']:.2f}, "
                     f"curr open {entry_candle['open']:.2f} >= OR low {or_low:.2f}"
                 )
-            if prev_bar["high"] < zone_low:
-                return self.not_detected(
-                    f"No retest: confirmation bar high {prev_bar['high']:.2f} below zone low {zone_low:.2f}"
-                )
             # Prev bar should be bearish (bounce confirmation)
             if prev_bar["close"] >= prev_bar["open"]:
                 return self.not_detected("No retest: confirmation bar not bearish")
 
-        # Confirmation: require engulfing or pinbar-style rejection at the OR level (no lookahead)
-        if direction == "long":
-            if not self._bullish_confirmation(prev_bar, entry_candle, or_high):
-                return self.not_detected("No confirmation: need bullish engulfing or pinbar at OR high")
+        # Confirmation: strict (engulfing/pinbar) or basic reclaim based on mode
+        confirm_mode = self.config.get("confirmation_mode", "basic")
+        if confirm_mode == "strict":
+            if direction == "long":
+                is_confirmed = self._bullish_confirmation(prev_bar, entry_candle, or_high)
+                if not is_confirmed:
+                    return self.not_detected(
+                        f"No confirmation: need bullish engulfing or pinbar at OR high "
+                        f"(prev: O={prev_bar['open']:.2f} C={prev_bar['close']:.2f}, "
+                        f"curr: O={entry_candle['open']:.2f} C={entry_candle['close']:.2f} H={entry_candle['high']:.2f} L={entry_candle['low']:.2f})"
+                    )
+            else:
+                is_confirmed = self._bearish_confirmation(prev_bar, entry_candle, or_low)
+                if not is_confirmed:
+                    return self.not_detected(
+                        f"No confirmation: need bearish engulfing or pinbar at OR low "
+                        f"(prev: O={prev_bar['open']:.2f} C={prev_bar['close']:.2f}, "
+                        f"curr: O={entry_candle['open']:.2f} C={entry_candle['close']:.2f} H={entry_candle['high']:.2f} L={entry_candle['low']:.2f})"
+                    )
         else:
-            if not self._bearish_confirmation(prev_bar, entry_candle, or_low):
-                return self.not_detected("No confirmation: need bearish engulfing or pinbar at OR low")
+            # Basic confirmation: prior bar is already bullish/bearish and reclaimed OR;
+            # no extra engulfing/pinbar check required.
+            pass
+
+        # MACD histogram hard gate (filter weak momentum entries)
+        min_histogram = self.config.get("min_histogram_threshold", 0)
+        if min_histogram > 0 and macd is not None and "histogram" in macd.columns:
+            current_histogram = macd["histogram"].iloc[-1]
+            if direction == "long":
+                # For longs: histogram must be positive and above threshold
+                if current_histogram < min_histogram:
+                    return self.not_detected(
+                        f"HARD GATE: MACD histogram {current_histogram:.4f} below threshold {min_histogram} for long"
+                    )
+            else:
+                # For shorts: histogram must be negative and below -threshold
+                if current_histogram > -min_histogram:
+                    return self.not_detected(
+                        f"HARD GATE: MACD histogram {current_histogram:.4f} above -{min_histogram} for short"
+                    )
+
+        # Pullback volume filter: avg RED bar volume during pullback < bounce bar volume
+        # Healthy pullback = weak selling (low vol), strong bounce (high vol)
+        # Only check bars from when price entered the retest zone, not all bars since breakout
+        if self.config.get("require_healthy_pullback_volume", False) and "volume" in df_day.columns:
+            # Pullback bars: from pullback_start (when price entered retest zone) to prev_bar
+            # prev_bar is df_day.iloc[-2], so pullback is df_day.iloc[pullback_start_idx:-2]
+            pullback_bars = df_day.iloc[pullback_start_idx:-2] if pullback_start_idx is not None else pd.DataFrame()
+            bounce_volume = prev_bar["volume"] if "volume" in prev_bar.index else 0
+
+            if len(pullback_bars) > 0 and bounce_volume > 0:
+                # Get RED bars only (close < open = selling)
+                red_bars = pullback_bars[pullback_bars["close"] < pullback_bars["open"]]
+
+                if len(red_bars) > 0:
+                    avg_red_volume = red_bars["volume"].mean()
+
+                    if avg_red_volume >= bounce_volume:
+                        return self.not_detected(
+                            f"Pullback volume filter: avg RED bar vol {avg_red_volume:,.0f} >= "
+                            f"bounce vol {bounce_volume:,.0f} (weak bounce, strong selling)"
+                        )
 
         # Build result
         # Base confidence: 75% (displacement + retest)

@@ -325,44 +325,75 @@ class PatternDetector(ABC):
     def _check_macd_cross(
         self, df: pd.DataFrame, entry_idx: int, direction: str = "long"
     ) -> Optional[ExitSignal]:
-        """Check for adverse MACD crossover (direction-aware)."""
+        """Check for adverse MACD crossover with confirmation bars (direction-aware).
+
+        Instead of exiting immediately on cross, wait for N consecutive bars
+        where MACD remains in adverse territory. This filters false signals.
+        """
         macd = self.calculate_macd(df["close"])
         if macd is None:
             return None
 
-        # Need at least 2 bars after entry to detect crossover
-        if entry_idx >= len(df) - 2:
+        # Get confirmation bars from config (default: 1 = immediate exit)
+        confirmation_bars = self.config.get("macd_exit_confirmation_bars", 1)
+
+        # Need at least (confirmation_bars + 1) bars after entry
+        if entry_idx >= len(df) - (confirmation_bars + 1):
             return None
+
+        cross_bar_idx = None  # Bar where initial cross occurred
+        consecutive_adverse = 0  # Count of consecutive adverse bars
 
         for i in range(entry_idx + 1, len(df)):
             if i < 1:
                 continue
 
-            prev_macd = macd.iloc[i - 1]["macd"]
-            prev_signal = macd.iloc[i - 1]["signal"]
             curr_macd = macd.iloc[i]["macd"]
             curr_signal = macd.iloc[i]["signal"]
 
             if direction == "short":
-                # For shorts: bullish cross is adverse (MACD crosses above signal)
-                if prev_macd <= prev_signal and curr_macd > curr_signal:
+                # For shorts: bullish (MACD > signal) is adverse
+                is_adverse = curr_macd > curr_signal
+            else:
+                # For longs: bearish (MACD < signal) is adverse
+                is_adverse = curr_macd < curr_signal
+
+            if is_adverse:
+                if cross_bar_idx is None:
+                    # Check if this is a new cross (prev was not adverse)
+                    if i > 0:
+                        prev_macd = macd.iloc[i - 1]["macd"]
+                        prev_signal = macd.iloc[i - 1]["signal"]
+                        if direction == "short":
+                            was_adverse = prev_macd > prev_signal
+                        else:
+                            was_adverse = prev_macd < prev_signal
+                        if not was_adverse:
+                            # This is the cross bar
+                            cross_bar_idx = i
+                            consecutive_adverse = 1
+                else:
+                    # Continuing adverse after initial cross
+                    consecutive_adverse += 1
+
+                # Check if we have enough confirmation
+                if consecutive_adverse >= confirmation_bars:
+                    if direction == "short":
+                        reason = f"MACD crossed above signal line ({consecutive_adverse} bars confirmed)"
+                    else:
+                        reason = f"MACD crossed below signal line ({consecutive_adverse} bars confirmed)"
                     return ExitSignal(
                         signal_type="macd_cross",
                         triggered=True,
-                        reason="MACD crossed above signal line (bullish - adverse for short)",
+                        reason=reason,
                         bar_idx=i,
                         price=df.iloc[i]["close"],
                     )
             else:
-                # For longs: bearish cross is adverse (MACD crosses below signal)
-                if prev_macd >= prev_signal and curr_macd < curr_signal:
-                    return ExitSignal(
-                        signal_type="macd_cross",
-                        triggered=True,
-                        reason="MACD crossed below signal line (bearish)",
-                        bar_idx=i,
-                        price=df.iloc[i]["close"],
-                    )
+                # MACD recovered - reset counter
+                cross_bar_idx = None
+                consecutive_adverse = 0
+
         return None
 
     def _check_volume_decline(

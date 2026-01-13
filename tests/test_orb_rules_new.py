@@ -115,8 +115,9 @@ class TestORBRuleCoverage:
             (100.0, 100.4, 99.5, 99.9, 100000),
             # Breakout and drift above, never retest
             (100.4, 101.0, 100.3, 100.8, 150000),
-            (100.8, 101.2, 100.7, 101.1, 140000),
+            (100.9, 101.2, 100.8, 101.1, 140000),  # low > zone_high (100.7) -> no retest
             (101.1, 101.3, 101.0, 101.2, 120000),
+            (101.2, 101.4, 101.1, 101.3, 110000),
         ])
 
         result = self.det.detect(bars)
@@ -143,10 +144,9 @@ class TestORBRuleCoverage:
         assert result.detected is False
         assert "window" in (result.reason or "").lower()
 
-    def test_confirmation_bar_must_touch_zone(self):
-        """Confirmation bar that never dips into retest zone should reject."""
+    def test_confirmation_bar_no_longer_requires_zone_touch(self):
+        """With basic confirmation, a reclaim without zone dip is allowed."""
         from tests.fixtures.opening_range_retest_fixtures import OPENING_RANGE_RETEST_CONFIRM_NO_TOUCH
 
         result = self.det.detect(OPENING_RANGE_RETEST_CONFIRM_NO_TOUCH)
-        assert result.detected is False
-        assert "confirmation bar" in (result.reason or "").lower()
+        assert result.detected is True, result.reason
