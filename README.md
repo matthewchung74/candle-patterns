@@ -271,22 +271,29 @@ from candle_patterns import MicroPullback
 
 detector = MicroPullback()
 
+# Track the trailed stop across calls to prevent "giving back" gains
+trailed_stop = None
+
 # After entry, on each new bar:
 result = detector.calculate_trailing_stop(
     bars=updated_bars,
     entry_idx=5,
     entry_price=10.00,
     original_stop=9.50,
-    current_spread=0.02,      # Current bid-ask spread
-    partial_taken=False,       # Set True after taking partial
-    direction="long",          # or "short"
+    current_spread=0.02,           # Current bid-ask spread
+    partial_taken=False,            # Set True after taking partial
+    direction="long",               # or "short"
+    previous_trailed_stop=trailed_stop,  # Pass last trailed stop to prevent loosening
 )
 
 if result.active:
+    trailed_stop = result.new_stop  # Save for next iteration
     print(f"Trailing active! New stop: ${result.new_stop:.2f}")
     print(f"Current R: {result.current_r_multiple:.1f}")
     print(f"High water mark: ${result.high_water_mark:.2f}")
 ```
+
+**Important**: Pass `previous_trailed_stop` to prevent the stop from loosening after a peak. Without it, a pullback after a run-up could lower the trailing stop.
 
 ### Configuration
 

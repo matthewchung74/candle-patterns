@@ -38,6 +38,15 @@ from tests.fixtures.trailing_stop_fixtures import (
     TRAIL_NEVER_LOWERS_ENTRY_IDX,
     TRAIL_NEVER_LOWERS_ENTRY_PRICE,
     TRAIL_NEVER_LOWERS_ORIGINAL_STOP,
+    # Never give back tests
+    TRAIL_NEVER_GIVE_BACK_PEAK,
+    TRAIL_NEVER_GIVE_BACK_PEAK_ENTRY_IDX,
+    TRAIL_NEVER_GIVE_BACK_PEAK_ENTRY_PRICE,
+    TRAIL_NEVER_GIVE_BACK_PEAK_ORIGINAL_STOP,
+    TRAIL_NEVER_GIVE_BACK_PULLBACK,
+    TRAIL_NEVER_GIVE_BACK_PULLBACK_ENTRY_IDX,
+    TRAIL_NEVER_GIVE_BACK_PULLBACK_ENTRY_PRICE,
+    TRAIL_NEVER_GIVE_BACK_PULLBACK_ORIGINAL_STOP,
     # Buffer tests
     TRAIL_WIDE_SPREAD,
     TRAIL_WIDE_SPREAD_ENTRY_IDX,
@@ -182,6 +191,45 @@ class TestTrailingStopBehavior:
         expected_hwm = post_entry["high"].max()
 
         assert result.high_water_mark == expected_hwm
+
+    def test_never_give_back_with_previous_trailed_stop(self):
+        """Stop should never loosen below previous_trailed_stop after a pullback."""
+        # First, get the trailing stop at peak
+        result_at_peak = self.detector.calculate_trailing_stop(
+            bars=TRAIL_NEVER_GIVE_BACK_PEAK,
+            entry_idx=TRAIL_NEVER_GIVE_BACK_PEAK_ENTRY_IDX,
+            entry_price=TRAIL_NEVER_GIVE_BACK_PEAK_ENTRY_PRICE,
+            original_stop=TRAIL_NEVER_GIVE_BACK_PEAK_ORIGINAL_STOP,
+        )
+        peak_stop = result_at_peak.new_stop
+        assert result_at_peak.active is True
+        assert peak_stop > TRAIL_NEVER_GIVE_BACK_PEAK_ORIGINAL_STOP
+
+        # Now calculate after pullback WITHOUT previous_trailed_stop
+        result_without_prev = self.detector.calculate_trailing_stop(
+            bars=TRAIL_NEVER_GIVE_BACK_PULLBACK,
+            entry_idx=TRAIL_NEVER_GIVE_BACK_PULLBACK_ENTRY_IDX,
+            entry_price=TRAIL_NEVER_GIVE_BACK_PULLBACK_ENTRY_PRICE,
+            original_stop=TRAIL_NEVER_GIVE_BACK_PULLBACK_ORIGINAL_STOP,
+            # No previous_trailed_stop - this would "give back" gains
+        )
+        stop_without_prev = result_without_prev.new_stop
+
+        # Now calculate WITH previous_trailed_stop
+        result_with_prev = self.detector.calculate_trailing_stop(
+            bars=TRAIL_NEVER_GIVE_BACK_PULLBACK,
+            entry_idx=TRAIL_NEVER_GIVE_BACK_PULLBACK_ENTRY_IDX,
+            entry_price=TRAIL_NEVER_GIVE_BACK_PULLBACK_ENTRY_PRICE,
+            original_stop=TRAIL_NEVER_GIVE_BACK_PULLBACK_ORIGINAL_STOP,
+            previous_trailed_stop=peak_stop,  # Pass the peak stop
+        )
+        stop_with_prev = result_with_prev.new_stop
+
+        # Without previous_trailed_stop, stop would have loosened (given back gains)
+        assert stop_without_prev < peak_stop, "Without prev, stop should loosen"
+
+        # With previous_trailed_stop, stop should NOT go below peak level
+        assert stop_with_prev >= peak_stop, "With prev, stop should NOT loosen"
 
 
 class TestTrailingStopBuffer:

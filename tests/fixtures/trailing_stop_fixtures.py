@@ -287,6 +287,73 @@ TRAIL_INSUFFICIENT_BARS_ORIGINAL_STOP = 9.50
 
 
 # -----------------------------------------------------------------------------
+# TRAIL_NEVER_GIVE_BACK: Test that previous_trailed_stop prevents loosening
+# Entry: $10.00, Stop: $9.50
+# Peak reaches 1.5R with trailing stop at ~$10.45
+# Then pullback with 2-bar low that would give $10.15 trailing
+# With previous_trailed_stop=$10.45, should NOT go below $10.45
+# -----------------------------------------------------------------------------
+TRAIL_NEVER_GIVE_BACK_PEAK = _make_bars([
+    # Pre-entry bars (need 14+ for ATR)
+    (9.50, 9.60, 9.45, 9.55, 100000),
+    (9.55, 9.65, 9.50, 9.60, 100000),
+    (9.60, 9.70, 9.55, 9.65, 100000),
+    (9.65, 9.75, 9.60, 9.70, 100000),
+    (9.70, 9.80, 9.65, 9.75, 100000),
+    (9.75, 9.85, 9.70, 9.80, 100000),
+    (9.80, 9.90, 9.75, 9.85, 100000),
+    (9.85, 9.95, 9.80, 9.90, 100000),
+    (9.90, 10.00, 9.85, 9.95, 100000),
+    (9.95, 10.05, 9.90, 10.00, 100000),
+
+    # Entry bar (idx 10)
+    (10.00, 10.10, 9.95, 10.05, 150000),
+
+    # Post-entry: strong move up to 1.5R
+    (10.05, 10.30, 10.02, 10.25, 180000),  # Low: 10.02
+    (10.25, 10.55, 10.20, 10.50, 200000),  # Low: 10.20
+    (10.50, 10.75, 10.48, 10.70, 220000),  # Low: 10.48, High: 10.75 = 1.5R
+    # 2-bar low at peak = min(10.20, 10.48) = 10.20
+])
+TRAIL_NEVER_GIVE_BACK_PEAK_ENTRY_IDX = 10
+TRAIL_NEVER_GIVE_BACK_PEAK_ENTRY_PRICE = 10.00
+TRAIL_NEVER_GIVE_BACK_PEAK_ORIGINAL_STOP = 9.50
+
+# After pullback - 2-bar lows are lower
+TRAIL_NEVER_GIVE_BACK_PULLBACK = _make_bars([
+    # Pre-entry bars (need 14+ for ATR)
+    (9.50, 9.60, 9.45, 9.55, 100000),
+    (9.55, 9.65, 9.50, 9.60, 100000),
+    (9.60, 9.70, 9.55, 9.65, 100000),
+    (9.65, 9.75, 9.60, 9.70, 100000),
+    (9.70, 9.80, 9.65, 9.75, 100000),
+    (9.75, 9.85, 9.70, 9.80, 100000),
+    (9.80, 9.90, 9.75, 9.85, 100000),
+    (9.85, 9.95, 9.80, 9.90, 100000),
+    (9.90, 10.00, 9.85, 9.95, 100000),
+    (9.95, 10.05, 9.90, 10.00, 100000),
+
+    # Entry bar (idx 10)
+    (10.00, 10.10, 9.95, 10.05, 150000),
+
+    # Post-entry: move up to 1.5R then pullback
+    (10.05, 10.30, 10.02, 10.25, 180000),
+    (10.25, 10.55, 10.20, 10.50, 200000),
+    (10.50, 10.75, 10.48, 10.70, 220000),  # Peak
+
+    # Pullback - lows drop
+    (10.70, 10.72, 10.25, 10.30, 150000),  # Low: 10.25 (pullback starts)
+    (10.30, 10.35, 10.10, 10.15, 140000),  # Low: 10.10 (deeper)
+    # 2-bar low = min(10.25, 10.10) = 10.10
+    # Without previous_trailed_stop, would give ~$10.08 stop
+    # With previous_trailed_stop=$10.18, should stay at $10.18
+])
+TRAIL_NEVER_GIVE_BACK_PULLBACK_ENTRY_IDX = 10
+TRAIL_NEVER_GIVE_BACK_PULLBACK_ENTRY_PRICE = 10.00
+TRAIL_NEVER_GIVE_BACK_PULLBACK_ORIGINAL_STOP = 9.50
+
+
+# -----------------------------------------------------------------------------
 # TRAIL_SHORT_POSITION: Trailing for short position (2-bar high)
 # Entry: $10.00 short, Stop: $10.50 (risk = $0.50), 1R = $9.50
 # -----------------------------------------------------------------------------

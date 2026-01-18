@@ -689,6 +689,7 @@ class PatternDetector(ABC):
         partial_taken: bool = False,
         direction: str = "long",
         trailing_config: Optional[Dict[str, Any]] = None,
+        previous_trailed_stop: Optional[float] = None,
     ) -> TrailingStopResult:
         """
         Calculate 2-bar low trailing stop with dynamic buffer.
@@ -714,6 +715,8 @@ class PatternDetector(ABC):
                 - atr_multiplier: ATR multiplier for buffer (default 0.1)
                 - atr_period: ATR lookback period (default 14)
                 - min_bars_after_entry: Bars to wait before trailing (default 2)
+            previous_trailed_stop: Previous trailing stop level (to prevent giving back gains).
+                Pass the last returned new_stop to ensure stop never loosens after a peak.
 
         Returns:
             TrailingStopResult with new stop price and metadata
@@ -812,14 +815,20 @@ class PatternDetector(ABC):
             # 2-bar low trailing for longs
             two_bar_low = completed_bars["low"].min()
             trailing_stop = two_bar_low - buffer
-            # Never lower the stop
-            new_stop = max(original_stop, trailing_stop)
+            # Never lower the stop - use max of original, previous trailed, and new trailing
+            floor_stop = original_stop
+            if previous_trailed_stop is not None:
+                floor_stop = max(original_stop, previous_trailed_stop)
+            new_stop = max(floor_stop, trailing_stop)
         else:
             # 2-bar high trailing for shorts
             two_bar_high = completed_bars["high"].max()
             trailing_stop = two_bar_high + buffer
-            # Never raise the stop (for shorts, lower is worse)
-            new_stop = min(original_stop, trailing_stop)
+            # Never raise the stop (for shorts, higher stop is worse)
+            ceiling_stop = original_stop
+            if previous_trailed_stop is not None:
+                ceiling_stop = min(original_stop, previous_trailed_stop)
+            new_stop = min(ceiling_stop, trailing_stop)
 
         # Build reason string
         if new_stop != original_stop:
