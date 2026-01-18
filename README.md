@@ -14,6 +14,7 @@ This library detects common momentum day trading patterns:
 - **Bull Flag** - Consolidation pattern with declining volume
 - **VWAP Break** - Price breaking above VWAP with volume
 - **Opening Range Retest** - ORB breakout with displacement + retest
+- **ABCD** - Harmonic pattern with Fibonacci retracements
 
 ## Installation
 
@@ -33,7 +34,7 @@ pip install -e .
 
 ```python
 import pandas as pd
-from candle_patterns import MicroPullback, BullFlag, VWAPBreak, OpeningRangeRetest
+from candle_patterns import MicroPullback, BullFlag, VWAPBreak, OpeningRangeRetest, ABCD
 
 # Your OHLCV data (newest bar last)
 bars = pd.DataFrame({
@@ -144,6 +145,46 @@ detector = OpeningRangeRetest({
 })
 ```
 
+### ABCD (Harmonic)
+
+Harmonic pattern with Fibonacci retracements. Detects both bullish and bearish ABCD patterns.
+
+```
+Bullish ABCD:
+    A - Swing low (start of impulse)
+    B - Swing high (end of AB leg)
+    C - Higher low (BC retracement of 38.2%-78.6% of AB)
+    D - Projected target where CD ≈ AB
+
+       B
+      /\        D
+     /  \      /
+    /    \    /
+   A      \  /
+           C
+
+Entry at D completion, stop below C
+```
+
+**Configuration:**
+```python
+detector = ABCD({
+    "min_bc_retracement": 0.382,  # 38.2% min (Fibonacci)
+    "max_bc_retracement": 0.786,  # 78.6% max (Fibonacci)
+    "cd_ab_ratio_min": 0.75,      # CD must be at least 75% of AB
+    "cd_ab_ratio_max": 1.25,      # CD must be at most 125% of AB
+    "min_leg_pct": 1.0,           # Min 1% move for AB leg
+    "swing_lookback": 3,          # Bars to confirm swing points
+    "direction_filter": None,     # None = both, "long" or "short"
+})
+
+result = detector.detect(bars)
+if result.detected:
+    print(f"Direction: {result.details['direction']}")
+    print(f"Projected D: ${result.details['projected_d']:.2f}")
+    print(f"BC Retracement: {result.details['bc_retracement']:.1%}")
+```
+
 ## Confirmations
 
 ### MACD (Auto-calculated)
@@ -176,7 +217,7 @@ print(result.volume_confirmation)  # True if volume confirms pattern
 Confidence is a 0.0–1.0 score returned by each detector. It is advisory only; gating is handled by the consumer.
 
 Standard bases/caps:
-- **Micro Pullback / Bull Flag / VWAP Break / VWAP Hold**: base 0.65, cap 0.90
+- **Micro Pullback / Bull Flag / VWAP Break / VWAP Hold / ABCD**: base 0.65, cap 0.90
 - **Opening Range Retest**: base 0.70, cap 0.95
 
 Boosts by pattern:
@@ -201,6 +242,84 @@ Boosts by pattern:
 | Opening Range Retest | fvg_found +0.10 | Displacement/FVG present |
 | Opening Range Retest | confirmed +0.05 | Breakout confirmation |
 | Opening Range Retest | trend_alignment +0.05 | 5-min EMA slope aligned |
+| ABCD | ideal_retracement | Higher confidence near 61.8% BC retracement |
+| ABCD | cd_ab_match | Higher confidence when CD ≈ AB (perfect harmonic) |
+
+## Trailing Stop
+
+Lock in profits with a 2-bar low trailing stop that activates after reaching a profit threshold.
+
+### How It Works
+
+1. **Activation**: Trailing activates after:
+   - Reaching +1R profit (configurable), OR
+   - Taking a partial (scale-out)
+
+2. **Calculation**: `Stop = min(low of last 2 bars) - buffer`
+
+3. **Dynamic Buffer**: `buffer = max(spread × 2, ATR(14) × 0.1)`
+   - Adapts to both liquidity (spread) and volatility (ATR)
+   - Wide spreads → larger buffer (avoid getting stopped by spread)
+   - High volatility → larger buffer (avoid noise stops)
+
+4. **Safety**: Stop never moves against you (longs: never lowers, shorts: never raises)
+
+### Usage
+
+```python
+from candle_patterns import MicroPullback
+
+detector = MicroPullback()
+
+# After entry, on each new bar:
+result = detector.calculate_trailing_stop(
+    bars=updated_bars,
+    entry_idx=5,
+    entry_price=10.00,
+    original_stop=9.50,
+    current_spread=0.02,      # Current bid-ask spread
+    partial_taken=False,       # Set True after taking partial
+    direction="long",          # or "short"
+)
+
+if result.active:
+    print(f"Trailing active! New stop: ${result.new_stop:.2f}")
+    print(f"Current R: {result.current_r_multiple:.1f}")
+    print(f"High water mark: ${result.high_water_mark:.2f}")
+```
+
+### Configuration
+
+```python
+trailing_config = {
+    "trailing_bars": 2,           # Number of bars for low/high calculation
+    "activation_r": 1.0,          # R-multiple to activate (default 1.0)
+    "spread_multiplier": 2.0,     # Spread × 2 for buffer
+    "atr_multiplier": 0.1,        # ATR × 0.1 for buffer
+    "atr_period": 14,             # ATR lookback period
+    "min_bars_after_entry": 2,    # Bars to wait before trailing
+}
+
+result = detector.calculate_trailing_stop(
+    bars=bars,
+    entry_idx=5,
+    entry_price=10.00,
+    original_stop=9.50,
+    trailing_config=trailing_config,
+)
+```
+
+### TrailingStopResult
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `active` | bool | Whether trailing stop is active |
+| `new_stop` | float | New stop price (may equal original if not trailing yet) |
+| `original_stop` | float | Original stop for reference |
+| `high_water_mark` | float | Highest high since entry (longs) |
+| `current_r_multiple` | float | Current profit in R multiples |
+| `is_trailing` | bool | True if stop has moved from original |
+| `reason` | str | Explanation of trailing status |
 
 ## Exit Signals
 

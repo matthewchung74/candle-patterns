@@ -1,11 +1,18 @@
 """
 Technical Indicators Module
 ===========================
-EMA, VWAP, MACD, and RVOL indicators.
+EMA, VWAP, MACD, RVOL, and ATR indicators.
 
 Self-contained indicator calculations for pattern detection
 and strategy integration.
 """
+
+from .atr import (
+    true_range,
+    calculate_atr,
+    get_current_atr,
+    add_atr_to_dataframe,
+)
 
 from .ema import (
     calculate_ema,
@@ -48,6 +55,11 @@ from .trend_confirmation import (
 )
 
 __all__ = [
+    # ATR
+    "true_range",
+    "calculate_atr",
+    "get_current_atr",
+    "add_atr_to_dataframe",
     # EMA
     "calculate_ema",
     "calculate_all_emas",

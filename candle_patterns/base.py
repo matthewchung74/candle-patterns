@@ -23,6 +23,23 @@ class ExitSignal:
 
 
 @dataclass
+class TrailingStopResult:
+    """Result of trailing stop calculation."""
+
+    active: bool  # Whether trailing stop is active
+    new_stop: float  # New stop price (may be same as original if not trailing yet)
+    original_stop: float  # Original stop for reference
+    high_water_mark: float  # Highest high since entry (for longs)
+    current_r_multiple: float  # Current profit in R multiples
+    reason: str  # Why trailing is/isn't active
+
+    @property
+    def is_trailing(self) -> bool:
+        """True if stop has moved from original."""
+        return self.new_stop != self.original_stop
+
+
+@dataclass
 class PatternResult:
     """Result of pattern detection."""
 
@@ -238,6 +255,7 @@ class PatternDetector(ABC):
         direction: str = "long",
         current_time: Optional[datetime] = None,
         details: Optional[Dict[str, Any]] = None,
+        vwap: Optional[pd.Series] = None,
     ) -> List[ExitSignal]:
         """
         Check for exit/invalidation signals after entry.
@@ -252,6 +270,7 @@ class PatternDetector(ABC):
             direction: "long" or "short"
             current_time: Current bar time (for time-based exits)
             details: Pattern-specific details (e.g., OR levels for ORB)
+            vwap: Optional VWAP series (same length as bars) for VWAP cross exit
 
         Returns:
             List of ExitSignal objects (empty if no exits triggered)
@@ -278,17 +297,23 @@ class PatternDetector(ABC):
         if macd_signal:
             signals.append(macd_signal)
 
-        # 3. Volume decline (weakness) - applies to both directions
+        # 3. VWAP crossover (direction-aware)
+        if vwap is not None:
+            vwap_signal = self._check_vwap_cross(df, entry_idx, vwap, direction)
+            if vwap_signal:
+                signals.append(vwap_signal)
+
+        # 4. Volume decline (weakness) - applies to both directions
         vol_signal = self._check_volume_decline(df, entry_idx)
         if vol_signal:
             signals.append(vol_signal)
 
-        # 4. Jackknife/Bottoming rejection (direction-aware)
+        # 5. Jackknife/Bottoming rejection (direction-aware)
         rejection_signal = self._check_rejection(post_entry, direction)
         if rejection_signal:
             signals.append(rejection_signal)
 
-        # 5. Topping/Bottoming tail (direction-aware)
+        # 6. Topping/Bottoming tail (direction-aware)
         tail_signal = self._check_reversal_tail(post_entry, entry_price, direction)
         if tail_signal:
             signals.append(tail_signal)
@@ -391,6 +416,97 @@ class PatternDetector(ABC):
                     )
             else:
                 # MACD recovered - reset counter
+                cross_bar_idx = None
+                consecutive_adverse = 0
+
+        return None
+
+    def _check_vwap_cross(
+        self,
+        df: pd.DataFrame,
+        entry_idx: int,
+        vwap: pd.Series,
+        direction: str = "long",
+    ) -> Optional[ExitSignal]:
+        """
+        Check for adverse VWAP crossover with confirmation (direction-aware).
+
+        For longs: exit when price closes below VWAP (losing institutional support)
+        For shorts: exit when price closes above VWAP (losing institutional pressure)
+
+        Uses confirmation bars from config to filter false signals.
+
+        Args:
+            df: OHLCV DataFrame
+            entry_idx: Index of entry bar
+            vwap: VWAP series (must be same length as df)
+            direction: "long" or "short"
+
+        Returns:
+            ExitSignal if VWAP cross detected, None otherwise
+        """
+        if vwap is None or len(vwap) != len(df):
+            return None
+
+        # Get confirmation bars from config (default: 1 = immediate exit)
+        confirmation_bars = self.config.get("vwap_exit_confirmation_bars", 1)
+
+        # Need at least (confirmation_bars + 1) bars after entry
+        if entry_idx >= len(df) - (confirmation_bars + 1):
+            return None
+
+        # Reset VWAP index to match df
+        vwap = vwap.reset_index(drop=True)
+
+        cross_bar_idx = None
+        consecutive_adverse = 0
+
+        for i in range(entry_idx + 1, len(df)):
+            close = df.iloc[i]["close"]
+            vwap_val = vwap.iloc[i]
+
+            if direction == "short":
+                # For shorts: price above VWAP is adverse
+                is_adverse = close > vwap_val
+            else:
+                # For longs: price below VWAP is adverse
+                is_adverse = close < vwap_val
+
+            if is_adverse:
+                if cross_bar_idx is None:
+                    # Check if this is a new cross
+                    if i > entry_idx:
+                        prev_close = df.iloc[i - 1]["close"]
+                        prev_vwap = vwap.iloc[i - 1]
+                        if direction == "short":
+                            was_adverse = prev_close > prev_vwap
+                        else:
+                            was_adverse = prev_close < prev_vwap
+                        if not was_adverse:
+                            # This is the cross bar
+                            cross_bar_idx = i
+                            consecutive_adverse = 1
+                        else:
+                            # Was already adverse, just count
+                            consecutive_adverse += 1
+                else:
+                    consecutive_adverse += 1
+
+                # Check if we have enough confirmation
+                if consecutive_adverse >= confirmation_bars:
+                    if direction == "short":
+                        reason = f"VWAP cross: price {close:.2f} above VWAP {vwap_val:.2f} ({consecutive_adverse} bars)"
+                    else:
+                        reason = f"VWAP cross: price {close:.2f} below VWAP {vwap_val:.2f} ({consecutive_adverse} bars)"
+                    return ExitSignal(
+                        signal_type="vwap_cross",
+                        triggered=True,
+                        reason=reason,
+                        bar_idx=i,
+                        price=close,
+                    )
+            else:
+                # Price recovered - reset counter
                 cross_bar_idx = None
                 consecutive_adverse = 0
 
@@ -562,3 +678,175 @@ class PatternDetector(ABC):
                     )
 
         return None
+
+    def calculate_trailing_stop(
+        self,
+        bars: pd.DataFrame,
+        entry_idx: int,
+        entry_price: float,
+        original_stop: float,
+        current_spread: float = 0.01,
+        partial_taken: bool = False,
+        direction: str = "long",
+        trailing_config: Optional[Dict[str, Any]] = None,
+    ) -> TrailingStopResult:
+        """
+        Calculate 2-bar low trailing stop with dynamic buffer.
+
+        Trailing activates after:
+        - Reaching activation_r profit (default 1.0R), OR
+        - Taking a partial (if partial_taken=True)
+
+        Buffer = max(spread × 2, ATR(14) × 0.1)
+
+        Args:
+            bars: OHLCV DataFrame including bars after entry
+            entry_idx: Index of the entry bar
+            entry_price: Price at which position was entered
+            original_stop: Original stop loss price
+            current_spread: Current bid-ask spread (default $0.01)
+            partial_taken: Whether a partial has been taken
+            direction: "long" or "short"
+            trailing_config: Optional config overrides:
+                - trailing_bars: Number of bars for low/high calc (default 2)
+                - activation_r: R-multiple to activate trailing (default 1.0)
+                - spread_multiplier: Spread multiplier for buffer (default 2.0)
+                - atr_multiplier: ATR multiplier for buffer (default 0.1)
+                - atr_period: ATR lookback period (default 14)
+                - min_bars_after_entry: Bars to wait before trailing (default 2)
+
+        Returns:
+            TrailingStopResult with new stop price and metadata
+        """
+        # Import ATR here to avoid circular imports
+        from .indicators.atr import get_current_atr
+
+        # Default trailing config
+        config = {
+            "trailing_bars": 2,
+            "activation_r": 1.0,
+            "spread_multiplier": 2.0,
+            "atr_multiplier": 0.1,
+            "atr_period": 14,
+            "min_bars_after_entry": 2,
+        }
+        if trailing_config:
+            config.update(trailing_config)
+
+        df = bars.copy().reset_index(drop=True)
+        n = len(df)
+
+        # Calculate risk (R)
+        risk = abs(entry_price - original_stop)
+        if risk == 0:
+            return TrailingStopResult(
+                active=False,
+                new_stop=original_stop,
+                original_stop=original_stop,
+                high_water_mark=entry_price,
+                current_r_multiple=0.0,
+                reason="Invalid setup: zero risk",
+            )
+
+        # Need enough bars after entry
+        bars_after_entry = n - entry_idx - 1
+        if bars_after_entry < config["min_bars_after_entry"]:
+            return TrailingStopResult(
+                active=False,
+                new_stop=original_stop,
+                original_stop=original_stop,
+                high_water_mark=entry_price,
+                current_r_multiple=0.0,
+                reason=f"Need {config['min_bars_after_entry']} bars after entry, have {bars_after_entry}",
+            )
+
+        # Get post-entry bars (excluding entry bar for trailing calc)
+        post_entry = df.iloc[entry_idx + 1:]
+
+        # Calculate high water mark and current R-multiple
+        if direction == "long":
+            high_water_mark = post_entry["high"].max()
+            current_profit = high_water_mark - entry_price
+        else:
+            # For shorts, track low water mark
+            high_water_mark = post_entry["low"].min()
+            current_profit = entry_price - high_water_mark
+
+        current_r = current_profit / risk
+
+        # Check activation conditions
+        activation_r = config["activation_r"]
+        is_activated = (current_r >= activation_r) or partial_taken
+
+        if not is_activated:
+            return TrailingStopResult(
+                active=False,
+                new_stop=original_stop,
+                original_stop=original_stop,
+                high_water_mark=high_water_mark,
+                current_r_multiple=current_r,
+                reason=f"Not activated: {current_r:.2f}R < {activation_r}R threshold",
+            )
+
+        # Calculate dynamic buffer
+        # buffer = max(spread × 2, ATR × 0.1)
+        spread_buffer = current_spread * config["spread_multiplier"]
+
+        atr_value = get_current_atr(df, period=config["atr_period"])
+        if atr_value is not None:
+            atr_buffer = atr_value * config["atr_multiplier"]
+        else:
+            # Fallback if not enough data for ATR
+            atr_buffer = 0.0
+
+        buffer = max(spread_buffer, atr_buffer)
+
+        # Calculate 2-bar low/high trailing stop
+        trailing_bars = config["trailing_bars"]
+
+        # Get last N completed bars (exclude current incomplete bar if present)
+        # For trailing, we use completed bars only
+        completed_bars = post_entry.iloc[-trailing_bars:] if len(post_entry) >= trailing_bars else post_entry
+
+        if direction == "long":
+            # 2-bar low trailing for longs
+            two_bar_low = completed_bars["low"].min()
+            trailing_stop = two_bar_low - buffer
+            # Never lower the stop
+            new_stop = max(original_stop, trailing_stop)
+        else:
+            # 2-bar high trailing for shorts
+            two_bar_high = completed_bars["high"].max()
+            trailing_stop = two_bar_high + buffer
+            # Never raise the stop (for shorts, lower is worse)
+            new_stop = min(original_stop, trailing_stop)
+
+        # Build reason string
+        if new_stop != original_stop:
+            if direction == "long":
+                reason = (
+                    f"Trailing active: 2-bar low ${two_bar_low:.2f} - "
+                    f"buffer ${buffer:.3f} = ${trailing_stop:.2f}, "
+                    f"stop raised to ${new_stop:.2f}"
+                )
+            else:
+                reason = (
+                    f"Trailing active: 2-bar high ${two_bar_high:.2f} + "
+                    f"buffer ${buffer:.3f} = ${trailing_stop:.2f}, "
+                    f"stop lowered to ${new_stop:.2f}"
+                )
+        else:
+            reason = (
+                f"Trailing active but stop unchanged: "
+                f"trailing ${trailing_stop:.2f} {'<' if direction == 'long' else '>'} "
+                f"original ${original_stop:.2f}"
+            )
+
+        return TrailingStopResult(
+            active=True,
+            new_stop=new_stop,
+            original_stop=original_stop,
+            high_water_mark=high_water_mark,
+            current_r_multiple=current_r,
+            reason=reason,
+        )
