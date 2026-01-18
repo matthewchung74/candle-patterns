@@ -717,6 +717,8 @@ class PatternDetector(ABC):
                 - min_bars_after_entry: Bars to wait before trailing (default 2)
             previous_trailed_stop: Previous trailing stop level (to prevent giving back gains).
                 Pass the last returned new_stop to ensure stop never loosens after a peak.
+                WARNING: If omitted, the function recomputes fresh each call and the stop
+                CAN loosen after a pullback. Always pass this for proper ratcheting behavior.
 
         Returns:
             TrailingStopResult with new stop price and metadata
