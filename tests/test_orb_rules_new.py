@@ -36,8 +36,9 @@ def make_df(start, bars):
 
 class TestORBRuleCoverage:
     def setup_method(self):
-        # Disable optional filters for deterministic behavior
+        # Enable ORB (disabled by default) and disable optional filters for deterministic behavior
         self.det = OpeningRangeRetest({
+            "enabled": True,
             "trend_alignment": False,
             "fakeout_filter": True,
             "choppy_filter": False,
@@ -55,10 +56,14 @@ class TestORBRuleCoverage:
             (100.0, 100.3, 99.6, 100.0, 100000),
             (100.0, 100.4, 99.5, 99.9, 100000),   # ORL=99.5
             (100.0, 100.2, 99.9, 100.1, 90000),   # 9:35
-            # Breakout close > ORH + disp (disp=0.2)
+            # Breakout close > ORH + disp
             (100.4, 101.0, 100.3, 100.8, 150000),
-            # Retest bar: low touches ORH, bullish close
-            (100.6, 101.1, 100.5, 101.0, 180000),
+            # Pullback bar: low touches retest zone (ORH area)
+            (100.7, 100.85, 100.5, 100.6, 100000),
+            # Confirmation bar: bullish, closes above ORH
+            (100.6, 101.1, 100.55, 101.0, 180000),
+            # Entry candle (current bar)
+            (100.95, 101.15, 100.9, 101.1, 160000),
         ])
 
         result = self.det.detect(bars)
@@ -74,11 +79,15 @@ class TestORBRuleCoverage:
             (100.4, 100.5, 99.9, 100.0, 100000),
             (100.0, 100.3, 99.6, 100.0, 100000),
             (100.0, 100.4, 99.5, 99.9, 100000),   # ORL=99.5
-            (100.0, 100.2, 99.9, 100.1, 90000),
+            (100.0, 100.2, 99.9, 100.1, 90000),   # 9:35
             # Breakout close < ORL - disp (disp=0.2 -> need close < 99.3)
             (99.4, 99.5, 99.1, 99.2, 160000),
-            # Retest bar: high touches ORL, bearish close (pinbar-ish)
-            (99.25, 99.65, 99.15, 99.20, 150000),
+            # Pullback bar: high touches retest zone (ORL area)
+            (99.25, 99.5, 99.2, 99.35, 100000),
+            # Confirmation bar: bearish, closes below ORL
+            (99.35, 99.55, 99.1, 99.15, 150000),
+            # Entry candle (current bar)
+            (99.2, 99.25, 99.05, 99.1, 140000),
         ])
 
         result = self.det.detect(bars)

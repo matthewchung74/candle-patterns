@@ -30,6 +30,9 @@ class OpeningRangeRetest(PatternDetector):
     def default_config(self) -> Dict[str, Any]:
         """Default configuration for ORB retest detection."""
         return {
+            # Master enable/disable switch (disabled by default)
+            "enabled": False,
+
             # Time windows (ET)
             "opening_range_minutes": 5,
             "setup_window_minutes": 90,
@@ -145,6 +148,10 @@ class OpeningRangeRetest(PatternDetector):
         Returns:
             PatternResult with detection details
         """
+        # Early return if pattern is disabled
+        if not self.config.get("enabled", False):
+            return self.not_detected("OpeningRangeRetest pattern is disabled")
+
         try:
             self.validate_bars(bars)
         except ValueError as e:

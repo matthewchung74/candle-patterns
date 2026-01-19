@@ -9,7 +9,7 @@ Core pattern tests are in dedicated files:
 This file contains:
 - VWAP Break pattern tests
 - Opening Range Retest pattern tests
-- Exit signal tests (topping tail, stop hit, volume decline, jackknife, MACD cross)
+- Exit signal tests (topping tail, stop hit, volume decline, jackknife, MACD cross, VWAP cross)
 - PatternResult tests
 - Confidence system tests
 
@@ -63,6 +63,12 @@ from tests.fixtures.exit_signal_fixtures import (
     MACD_CROSS_STAYS_BULLISH,
     MACD_CROSS_BULLISH_CROSS,
     MACD_CROSS_LIMIT_EQUALS_THEN_BELOW,
+    # VWAP Cross
+    VWAP_CROSS_VALID,
+    VWAP_CROSS_NOT_ENOUGH_AFTER_ENTRY,
+    VWAP_CROSS_STAYS_ABOVE,
+    VWAP_CROSS_LIMIT_EQUALS_THEN_BELOW,
+    VWAP_CROSS_SHORT_VALID,
 )
 from tests.fixtures.opening_range_retest_fixtures import (
     OPENING_RANGE_RETEST_VALID,
@@ -322,13 +328,87 @@ class TestMACDCrossExit:
         assert signal.triggered is True
 
 
+class TestVWAPCrossExit:
+    """Tests for VWAP cross exit signal detection."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.detector = MicroPullback()
+
+    def _get_vwap_signal(self, fixture, direction="long"):
+        """Helper to check for VWAP cross signal."""
+        bars = fixture["bars"]
+        vwap = fixture["vwap"]
+        entry_idx = fixture["entry_idx"]
+        return self.detector._check_vwap_cross(bars, entry_idx, vwap, direction)
+
+    def test_valid_vwap_cross_long(self):
+        """Test that price crossing below VWAP triggers exit for longs."""
+        signal = self._get_vwap_signal(VWAP_CROSS_VALID)
+
+        assert signal is not None
+        assert signal.signal_type == "vwap_cross"
+        assert signal.triggered is True
+        assert "below VWAP" in signal.reason
+
+    def test_not_enough_bars_after_entry(self):
+        """Test that signal is NOT triggered with insufficient bars after entry."""
+        signal = self._get_vwap_signal(VWAP_CROSS_NOT_ENOUGH_AFTER_ENTRY)
+
+        assert signal is None
+
+    def test_price_stays_above_vwap(self):
+        """Test that signal is NOT triggered when price stays above VWAP."""
+        signal = self._get_vwap_signal(VWAP_CROSS_STAYS_ABOVE)
+
+        assert signal is None
+
+    def test_limit_equals_then_below(self):
+        """Test that price equaling VWAP then going below triggers."""
+        signal = self._get_vwap_signal(VWAP_CROSS_LIMIT_EQUALS_THEN_BELOW)
+
+        assert signal is not None
+        assert signal.signal_type == "vwap_cross"
+        assert signal.triggered is True
+
+    def test_valid_vwap_cross_short(self):
+        """Test that price crossing above VWAP triggers exit for shorts."""
+        signal = self._get_vwap_signal(VWAP_CROSS_SHORT_VALID, direction="short")
+
+        assert signal is not None
+        assert signal.signal_type == "vwap_cross"
+        assert signal.triggered is True
+        assert "above VWAP" in signal.reason
+
+    def test_vwap_in_check_exit_signals(self):
+        """Test that VWAP cross is included when calling check_exit_signals with vwap."""
+        fixture = VWAP_CROSS_VALID
+        bars = fixture["bars"]
+        vwap = fixture["vwap"]
+        entry_idx = fixture["entry_idx"]
+
+        signals = self.detector.check_exit_signals(
+            bars=bars,
+            entry_idx=entry_idx,
+            entry_price=10.20,
+            stop_price=9.50,
+            direction="long",
+            vwap=vwap,
+        )
+
+        vwap_signals = [s for s in signals if s.signal_type == "vwap_cross"]
+        assert len(vwap_signals) == 1
+        assert vwap_signals[0].triggered is True
+
+
 class TestOpeningRangeRetest:
     """Tests for Opening Range Retest pattern detection."""
 
     def setup_method(self):
         """Set up test fixtures."""
-        # Disable optional filters for deterministic fixtures
+        # Enable ORB (disabled by default) and disable optional filters for deterministic fixtures
         self.detector = OpeningRangeRetest({
+            "enabled": True,
             "trend_alignment": False,
             "fakeout_filter": False,
             "choppy_filter": False,
@@ -364,6 +444,15 @@ class TestOpeningRangeRetest:
 
         assert result.detected is False
         assert "window" in result.reason.lower()
+
+    def test_disabled_returns_not_detected(self):
+        """Test that ORB returns not_detected when disabled (default)."""
+        # Create detector with default config (enabled=False)
+        disabled_detector = OpeningRangeRetest()
+        result = disabled_detector.detect(OPENING_RANGE_RETEST_VALID)
+
+        assert result.detected is False
+        assert "disabled" in result.reason.lower()
 
 
 class TestConfidenceSystem:

@@ -40,14 +40,17 @@ _ORB_VALID_LONG = [
     (99.9, 100.2, 99.9, 100.1, 90000),
     (100.0, 100.3, 99.9, 100.2, 90000),
 
-    # Breakout bar (close > ORH)
+    # Breakout bar (close > ORH + displacement)
     (100.4, 101.0, 100.3, 100.9, 150000),
 
-    # Retest + Bullish Engulfing:
-    # - Low touches ORH (100.5)
-    # - Body larger than prior bar's body
-    # - Close above prior high
-    (100.6, 101.25, 100.45, 101.20, 180000),
+    # Pullback bar - low touches retest zone around ORH (100.5)
+    (100.8, 100.9, 100.5, 100.6, 100000),
+
+    # Confirmation bar - bullish, closes above ORH
+    (100.6, 101.25, 100.55, 101.20, 180000),
+
+    # Entry candle (current bar)
+    (101.15, 101.30, 101.10, 101.25, 160000),
 ]
 
 OPENING_RANGE_RETEST_VALID = _make_bars(

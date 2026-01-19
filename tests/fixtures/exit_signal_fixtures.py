@@ -599,3 +599,144 @@ MACD_CROSS_LIMIT_EQUALS_THEN_BELOW = {
         [11.30, 11.20, 11.10]
     ),
 }
+
+
+# =============================================================================
+# VWAP CROSS - Helper to create bars with VWAP
+# =============================================================================
+def _make_vwap_bars(closes: list, vwap_values: list, volumes: list = None) -> tuple:
+    """
+    Create bars DataFrame and VWAP series for testing.
+
+    Args:
+        closes: List of close prices
+        vwap_values: List of VWAP values (same length as closes)
+        volumes: Optional list of volumes (defaults to 100000)
+
+    Returns:
+        Tuple of (bars DataFrame, vwap Series)
+    """
+    if volumes is None:
+        volumes = [100000] * len(closes)
+
+    data = []
+    for i, close in enumerate(closes):
+        open_p = close * 0.998
+        high = close * 1.002
+        low = close * 0.996
+        vol = volumes[i] if i < len(volumes) else 100000
+        data.append((open_p, high, low, close, vol))
+
+    bars = _make_bars(data)
+    vwap = pd.Series(vwap_values)
+    return bars, vwap
+
+
+# =============================================================================
+# VWAP CROSS - VALID: Price crosses below VWAP (long exit)
+# =============================================================================
+# For longs: price closing below VWAP indicates losing institutional support.
+# Entry at bar 0 with price above VWAP, then price drops below VWAP.
+#
+# Bar 0: close=10.20, vwap=10.00 (above VWAP - ok)
+# Bar 1: close=10.15, vwap=10.05 (above VWAP - ok)
+# Bar 2: close=9.90, vwap=10.00 (below VWAP - trigger!)
+
+VWAP_CROSS_VALID = {
+    "entry_idx": 0,
+    "bars": _make_vwap_bars(
+        closes=[10.20, 10.15, 9.90],
+        vwap_values=[10.00, 10.05, 10.00],
+    )[0],
+    "vwap": _make_vwap_bars(
+        closes=[10.20, 10.15, 9.90],
+        vwap_values=[10.00, 10.05, 10.00],
+    )[1],
+}
+
+# Expected: ExitSignal with signal_type="vwap_cross", triggered=True
+
+
+# =============================================================================
+# VWAP CROSS - REJECTED: Not enough bars after entry
+# =============================================================================
+# Entry at bar 0, only 1 bar after entry (need at least confirmation_bars + 1)
+# With default confirmation_bars=1, we need at least 2 bars after entry.
+
+VWAP_CROSS_NOT_ENOUGH_AFTER_ENTRY = {
+    "entry_idx": 0,
+    "bars": _make_vwap_bars(
+        closes=[10.20, 9.90],  # Only 1 bar after entry
+        vwap_values=[10.00, 10.00],
+    )[0],
+    "vwap": _make_vwap_bars(
+        closes=[10.20, 9.90],
+        vwap_values=[10.00, 10.00],
+    )[1],
+}
+
+# Expected: No vwap_cross signal (not enough bars)
+
+
+# =============================================================================
+# VWAP CROSS - REJECTED: Price stays above VWAP (for longs)
+# =============================================================================
+# Price never crosses below VWAP - no exit signal.
+
+VWAP_CROSS_STAYS_ABOVE = {
+    "entry_idx": 0,
+    "bars": _make_vwap_bars(
+        closes=[10.20, 10.25, 10.30, 10.35],
+        vwap_values=[10.00, 10.05, 10.10, 10.15],
+    )[0],
+    "vwap": _make_vwap_bars(
+        closes=[10.20, 10.25, 10.30, 10.35],
+        vwap_values=[10.00, 10.05, 10.10, 10.15],
+    )[1],
+}
+
+# Expected: No vwap_cross signal (price stays above VWAP)
+
+
+# =============================================================================
+# VWAP CROSS - LIMIT: Price equals VWAP then goes below
+# =============================================================================
+# Tests boundary condition: close == vwap is NOT adverse (need close < vwap).
+# Bar 1: close equals VWAP (not adverse)
+# Bar 2: close below VWAP (adverse - should trigger)
+
+VWAP_CROSS_LIMIT_EQUALS_THEN_BELOW = {
+    "entry_idx": 0,
+    "bars": _make_vwap_bars(
+        closes=[10.20, 10.00, 9.95],
+        vwap_values=[10.00, 10.00, 10.00],
+    )[0],
+    "vwap": _make_vwap_bars(
+        closes=[10.20, 10.00, 9.95],
+        vwap_values=[10.00, 10.00, 10.00],
+    )[1],
+}
+
+# Expected: ExitSignal with signal_type="vwap_cross" on bar 2
+
+
+# =============================================================================
+# VWAP CROSS - SHORT: Price crosses above VWAP (short exit)
+# =============================================================================
+# For shorts: price closing above VWAP indicates losing institutional pressure.
+# Entry at bar 0 with price below VWAP, then price rises above VWAP.
+
+VWAP_CROSS_SHORT_VALID = {
+    "entry_idx": 0,
+    "direction": "short",
+    "bars": _make_vwap_bars(
+        closes=[9.80, 9.85, 10.10],
+        vwap_values=[10.00, 9.95, 10.00],
+    )[0],
+    "vwap": _make_vwap_bars(
+        closes=[9.80, 9.85, 10.10],
+        vwap_values=[10.00, 9.95, 10.00],
+    )[1],
+}
+
+# Expected: ExitSignal with signal_type="vwap_cross", triggered=True
