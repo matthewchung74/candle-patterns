@@ -96,6 +96,10 @@ class VWAPBreak(PatternDetector):
         # Align VWAP with DataFrame
         df["vwap"] = vwap.values
 
+        # Check for any NaN values in VWAP (would cause comparison errors)
+        if df["vwap"].isna().any():
+            return self.not_detected("VWAP contains NaN values")
+
         # Step 1: Check if there was a period below VWAP
         below_vwap_result = self._find_below_vwap_period(df)
         if below_vwap_result is None:
