@@ -247,7 +247,14 @@ Boosts by pattern:
 
 ## Trailing Stop
 
-Lock in profits with a 2-bar low trailing stop that activates after reaching a profit threshold.
+Lock in profits with configurable trailing stop strategies that activate after reaching a profit threshold.
+
+### Strategies
+
+| Strategy | Description | Best For |
+|----------|-------------|----------|
+| `swing_low` | Trail to N-bar low minus buffer | Momentum trades |
+| `atr` | Trail N × ATR from high water mark | Volatile stocks |
 
 ### How It Works
 
@@ -255,66 +262,112 @@ Lock in profits with a 2-bar low trailing stop that activates after reaching a p
    - Reaching +1R profit (configurable), OR
    - Taking a partial (scale-out)
 
-2. **Calculation**: `Stop = min(low of last 2 bars) - buffer`
+2. **Calculation**:
+   - `swing_low`: `Stop = min(low of last N bars) - buffer`
+   - `atr`: `Stop = high_water_mark - (N × ATR)`
 
-3. **Dynamic Buffer**: `buffer = max(spread × 2, ATR(14) × 0.1)`
+3. **Dynamic Buffer** (swing_low): `buffer = max(spread × 2, ATR(14) × 0.1)`
    - Adapts to both liquidity (spread) and volatility (ATR)
-   - Wide spreads → larger buffer (avoid getting stopped by spread)
-   - High volatility → larger buffer (avoid noise stops)
 
 4. **Safety**: Stop never moves against you (longs: never lowers, shorts: never raises)
 
 ### Usage
 
 ```python
-from candle_patterns import MicroPullback
-
-detector = MicroPullback()
-
-# Track the trailed stop across calls to prevent "giving back" gains
-trailed_stop = None
-
-# After entry, on each new bar:
-result = detector.calculate_trailing_stop(
-    bars=updated_bars,
-    entry_idx=5,
-    entry_price=10.00,
-    original_stop=9.50,
-    current_spread=0.02,           # Current bid-ask spread
-    partial_taken=False,            # Set True after taking partial
-    direction="long",               # or "short"
-    previous_trailed_stop=trailed_stop,  # Pass last trailed stop to prevent loosening
+from candle_patterns import (
+    calculate_trailing_stop,
+    TrailingStopState,
+    TrailingStopConfig,
 )
+
+# Initialize state once at entry
+state = TrailingStopState.from_entry(
+    entry_price=10.00,
+    stop_price=9.50,
+    direction="long",
+    entry_idx=5,
+)
+
+# Configure strategy (defaults to swing_low)
+config = TrailingStopConfig(
+    strategy="swing_low",      # or "atr"
+    activation_r=1.0,          # Activate at 1R profit
+    current_spread=0.02,       # Current bid-ask spread
+)
+
+# On each new bar, calculate trailing stop
+result = calculate_trailing_stop(bars, state, config)
 
 if result.active:
-    trailed_stop = result.new_stop  # Save for next iteration
+    # Update state for next iteration (prevents stop from loosening)
+    state.current_stop = result.new_stop
+    state.high_water_mark = result.high_water_mark
+    state.is_activated = True
+
     print(f"Trailing active! New stop: ${result.new_stop:.2f}")
     print(f"Current R: {result.current_r_multiple:.1f}")
-    print(f"High water mark: ${result.high_water_mark:.2f}")
+    print(f"Strategy: {result.strategy_name}")
 ```
 
-**Important**: Pass `previous_trailed_stop` to prevent the stop from loosening after a peak. Without it, a pullback after a run-up could lower the trailing stop.
-
-### Configuration
+### Configuration Examples
 
 ```python
-trailing_config = {
-    "trailing_bars": 2,           # Number of bars for low/high calculation
-    "activation_r": 1.0,          # R-multiple to activate (default 1.0)
-    "spread_multiplier": 2.0,     # Spread × 2 for buffer
-    "atr_multiplier": 0.1,        # ATR × 0.1 for buffer
-    "atr_period": 14,             # ATR lookback period
-    "min_bars_after_entry": 2,    # Bars to wait before trailing
-}
+# Default (swing low, activate at 1R)
+config = TrailingStopConfig()
 
-result = detector.calculate_trailing_stop(
-    bars=bars,
-    entry_idx=5,
-    entry_price=10.00,
-    original_stop=9.50,
-    trailing_config=trailing_config,
+# ATR trailing with 2.5x multiplier
+config = TrailingStopConfig(
+    strategy="atr",
+    activation_r=1.0,
+    params={"atr_multiplier": 2.5}
+)
+
+# Tight swing low (1-bar)
+config = TrailingStopConfig(
+    strategy="swing_low",
+    activation_r=0.75,
+    params={"trailing_bars": 1}
+)
+
+# Swing low with custom buffer
+config = TrailingStopConfig(
+    strategy="swing_low",
+    current_spread=0.05,
+    params={
+        "trailing_bars": 2,
+        "spread_multiplier": 2.0,
+        "atr_multiplier": 0.1,
+    }
 )
 ```
+
+### Strategy Parameters
+
+**swing_low**:
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `trailing_bars` | 2 | Number of bars for low/high calculation |
+| `spread_multiplier` | 2.0 | Spread × N for buffer |
+| `atr_multiplier` | 0.1 | ATR × N for buffer |
+| `atr_period` | 14 | ATR lookback period |
+
+**atr**:
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `atr_multiplier` | 2.0 | Trail N × ATR from high water mark |
+| `atr_period` | 14 | ATR lookback period |
+
+### TrailingStopState
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `entry_price` | float | Price at which position was entered |
+| `original_stop` | float | Original stop loss price |
+| `current_stop` | float | Current trailing stop (update after each call) |
+| `direction` | str | "long" or "short" |
+| `high_water_mark` | float | Best price since entry (update after each call) |
+| `is_activated` | bool | Whether trailing has activated (update after each call) |
+| `partial_taken` | bool | Set True when partial taken to force activation |
 
 ### TrailingStopResult
 
@@ -327,6 +380,9 @@ result = detector.calculate_trailing_stop(
 | `current_r_multiple` | float | Current profit in R multiples |
 | `is_trailing` | bool | True if stop has moved from original |
 | `reason` | str | Explanation of trailing status |
+| `strategy_name` | str | Name of strategy used |
+| `just_activated` | bool | True if trailing just activated on this bar |
+| `stop_moved` | bool | True if stop moved from previous level |
 
 ## Exit Signals
 

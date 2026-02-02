@@ -19,19 +19,32 @@ Usage:
         print(f"Entry: {result.entry_price}, Stop: {result.stop_price}")
 """
 
-from .base import PatternResult, PatternDetector, ExitSignal, TrailingStopResult
+from .base import PatternResult, PatternDetector, ExitSignal
 from .micro_pullback import MicroPullback
 from .bull_flag import BullFlag
 from .vwap_break import VWAPBreak
 from .opening_range_retest import OpeningRangeRetest
 from .abcd import ABCD
 
+# Trailing stop module exports
+from .trailing import (
+    calculate_trailing_stop,
+    TrailingStopState,
+    TrailingStopConfig,
+    TrailingStopResult,
+)
+
 __version__ = "0.1.0"
 __all__ = [
     "PatternResult",
     "PatternDetector",
     "ExitSignal",
+    # Trailing stop
+    "calculate_trailing_stop",
+    "TrailingStopState",
+    "TrailingStopConfig",
     "TrailingStopResult",
+    # Pattern detectors
     "MicroPullback",
     "BullFlag",
     "VWAPBreak",
