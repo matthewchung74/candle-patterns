@@ -156,6 +156,17 @@ class BullFlag(PatternDetector):
 
         # Step 6: Calculate entry and stop
         entry_price = flag_high + 0.01  # 1 cent above flag resistance
+
+        # Validate entry_price is within reasonable range of current price
+        # This prevents stale bar data from causing invalid signals
+        current_price = entry_candle["close"]
+        max_entry_deviation_pct = self.config.get("max_entry_deviation_pct", 5.0)
+        if entry_price > current_price * (1 + max_entry_deviation_pct / 100):
+            return self.not_detected(
+                f"Entry price {entry_price:.2f} too far from current {current_price:.2f} "
+                f"(>{max_entry_deviation_pct}% deviation - possible stale data)"
+            )
+
         stop_buffer = self.config["stop_buffer_cents"] / 100
         stop_price = flag_low - stop_buffer
         stop_distance_cents = (entry_price - stop_price) * 100

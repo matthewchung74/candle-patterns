@@ -232,11 +232,21 @@ class MicroPullback(PatternDetector):
             # Entry slightly above open of green candle (no lookahead - open is known)
             entry_price = entry_candle["open"] + 0.01
 
-        # Step 6: Validate entry > stop (critical safety check)
-        # Reject pattern if entry would be at or below stop - invalid long setup
+        # Step 6: Validate entry price is reasonable
+        # Check entry > stop (critical safety check)
         if entry_price <= stop_price:
             return self.not_detected(
                 f"Invalid setup: entry ${entry_price:.2f} <= stop ${stop_price:.2f}"
+            )
+
+        # Validate entry_price is within reasonable range of current price
+        # This prevents stale bar data from causing invalid signals
+        current_price = entry_candle["close"]
+        max_entry_deviation_pct = self.config.get("max_entry_deviation_pct", 5.0)
+        if entry_price > current_price * (1 + max_entry_deviation_pct / 100):
+            return self.not_detected(
+                f"Entry price {entry_price:.2f} too far from current {current_price:.2f} "
+                f"(>{max_entry_deviation_pct}% deviation - possible stale data)"
             )
 
         stop_distance_cents = (entry_price - stop_price) * 100
