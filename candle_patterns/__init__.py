@@ -25,6 +25,7 @@ from .bull_flag import BullFlag
 from .vwap_break import VWAPBreak
 from .opening_range_retest import OpeningRangeRetest
 from .abcd import ABCD
+from .reversal import ReversalPatternDetector
 
 # Trailing stop module exports
 from .trailing import (
@@ -50,4 +51,5 @@ __all__ = [
     "VWAPBreak",
     "OpeningRangeRetest",
     "ABCD",
+    "ReversalPatternDetector",
 ]
