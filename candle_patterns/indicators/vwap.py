@@ -34,6 +34,11 @@ def calculate_vwap(
     """
     df = data.copy()
 
+    # Sort by timestamp to ensure correct cumulative calculation
+    # (handles out-of-order bars from historical backfill + live updates)
+    if "timestamp" in df.columns:
+        df = df.sort_values("timestamp").reset_index(drop=True)
+
     # Typical price = (H + L + C) / 3
     df["typical_price"] = (df["high"] + df["low"] + df["close"]) / 3
     df["tp_volume"] = df["typical_price"] * df["volume"]
