@@ -331,28 +331,29 @@ ABCD_PASS_MIN_BC_RETRACEMENT = {
 
 # Valid bullish ABCD with BC retracement at 78% (just below 78.6% maximum)
 # A=$10.00, B=$12.00 (AB=$2.00), C=$10.44 (BC=$1.56 = 78%)
+# CD = $12.20 - $10.44 = $1.76 = 88% of AB → passes 80% min completion
 ABCD_PASS_MAX_BC_RETRACEMENT = {
     "bars": _make_abcd_bars(
         a_price=10.00,
         b_price=12.00,
         c_price=10.44,  # 78% retracement
-        current_price=12.00,
+        current_price=12.20,
         direction="long",
     ),
     "description": "BC retracement at 78% (just below 78.6% max)",
 }
 
-# Valid bullish ABCD with CD/AB ratio at ~76% (just above 75% min for detection)
-# A=$10.00, B=$12.00 (AB=$2.00), C=$11.00 (BC=50%), current=$12.50 (CD=$1.50=75%)
+# Valid bullish ABCD with CD/AB ratio at ~81% (just above 80% min completion)
+# A=$10.00, B=$12.00 (AB=$2.00), C=$11.00 (BC=50%), current=$12.62 (CD=$1.62=81%)
 ABCD_PASS_MIN_CD_AB_RATIO = {
     "bars": _make_abcd_bars(
         a_price=10.00,
         b_price=12.00,
         c_price=11.00,
-        current_price=12.52,  # CD = $1.52 = 76% of AB
+        current_price=12.62,  # CD = $1.62 = 81% of AB
         direction="long",
     ),
-    "description": "CD/AB ratio at 76% (just above 75% min)",
+    "description": "CD/AB ratio at 81% (just above 80% min completion)",
 }
 
 # Valid bullish ABCD with CD/AB ratio at ~120% (approaching max)
@@ -412,7 +413,7 @@ ABCD_FAIL_C_NOT_HIGHER = {
     "description": "C below A invalidates bullish ABCD",
 }
 
-# CD leg not developed enough (< 50% of AB)
+# CD leg not developed enough (< 80% of AB)
 # A=$10.00, B=$12.00, C=$11.00, current=$11.40 (CD=$0.40 = 20%)
 ABCD_FAIL_CD_NOT_DEVELOPED = {
     "bars": _make_abcd_bars(
@@ -422,7 +423,7 @@ ABCD_FAIL_CD_NOT_DEVELOPED = {
         current_price=11.40,  # Only 20% of AB move
         direction="long",
     ),
-    "description": "CD only 20% of AB, need at least 50%",
+    "description": "CD only 20% of AB, need at least 80%",
 }
 
 # AB leg too small (< 1% move) - flat price action

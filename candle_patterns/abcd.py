@@ -54,6 +54,7 @@ class ABCD(PatternDetector):
             # CD leg requirements
             "cd_ab_ratio_min": 0.75,  # CD must be at least 75% of AB
             "cd_ab_ratio_max": 1.25,  # CD must be at most 125% of AB
+            "cd_min_completion": 0.80,  # CD must be at least 80% developed
 
             # Minimum leg size (as percentage of price)
             "min_leg_pct": 1.0,  # AB leg must be at least 1% move
@@ -289,8 +290,9 @@ class ABCD(PatternDetector):
         ratio_min = self.config["cd_ab_ratio_min"]
         ratio_max = self.config["cd_ab_ratio_max"]
 
-        # Pattern detected if CD is developing (at least 50% of expected)
-        if cd_ab_ratio < 0.5:
+        # Pattern detected if CD is developing (at least 80% of expected)
+        min_completion = self.config.get("cd_min_completion", 0.80)
+        if cd_ab_ratio < min_completion:
             return None  # CD leg not developed enough
 
         # Entry at current price (or projected D)
@@ -386,8 +388,9 @@ class ABCD(PatternDetector):
         cd_move = c_price - current_price
         cd_ab_ratio = cd_move / ab_move if ab_move != 0 else 0
 
-        # Check if CD is developing (at least 50% of expected)
-        if cd_ab_ratio < 0.5:
+        # Check if CD is developing (at least 80% of expected)
+        min_completion = self.config.get("cd_min_completion", 0.80)
+        if cd_ab_ratio < min_completion:
             return None  # CD leg not developed enough
 
         # Entry at current price (or projected D)

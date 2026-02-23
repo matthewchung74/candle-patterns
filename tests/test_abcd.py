@@ -110,13 +110,13 @@ class TestABCDDetection:
         assert result.details["bc_retracement"] <= 0.786
 
     def test_pass_min_cd_ab_ratio_boundary(self):
-        """Test detection with CD/AB ratio at 76% (just above 75% minimum)."""
+        """Test detection with CD/AB ratio at 81% (just above 80% min completion)."""
         fixture = ABCD_PASS_MIN_CD_AB_RATIO
         result = self.detector.detect(fixture["bars"])
 
         assert result.detected is True
-        # CD must be at least 50% developed (detection threshold)
-        assert result.details["cd_ab_ratio"] >= 0.50
+        # CD must be at least 80% developed (detection threshold)
+        assert result.details["cd_ab_ratio"] >= 0.80
 
     def test_pass_max_cd_ab_ratio_boundary(self):
         """Test detection with CD/AB ratio near maximum."""
@@ -156,7 +156,7 @@ class TestABCDDetection:
             assert "no valid" in result.reason.lower()
 
     def test_fail_cd_not_developed(self):
-        """Test rejection when CD leg is < 50% of AB."""
+        """Test rejection when CD leg is < 80% of AB."""
         fixture = ABCD_FAIL_CD_NOT_DEVELOPED
         result = self.detector.detect(fixture["bars"])
 
