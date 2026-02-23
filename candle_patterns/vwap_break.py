@@ -52,7 +52,8 @@ class VWAPBreak(PatternDetector):
 
             # Risk
             "stop_loss": "below_vwap",
-            "stop_buffer_cents": 10,
+            "stop_buffer_pct": 0.75,  # 0.75% below VWAP
+            "stop_buffer_min_cents": 5,  # Minimum 5 cents buffer
 
             # Minimum bars needed
             "min_bars_required": 6,
@@ -122,7 +123,10 @@ class VWAPBreak(PatternDetector):
         # Step 3: Calculate entry and stop
         current_vwap = df.iloc[-1]["vwap"]
         entry_price = current_vwap + 0.02  # 2 cents above VWAP
-        stop_price = current_vwap - (self.config["stop_buffer_cents"] / 100)
+        pct_buffer = current_vwap * (self.config["stop_buffer_pct"] / 100)
+        min_buffer = self.config["stop_buffer_min_cents"] / 100
+        stop_buffer = max(pct_buffer, min_buffer)
+        stop_price = current_vwap - stop_buffer
         stop_distance_cents = (entry_price - stop_price) * 100
 
         # Step 3b: Enforce minimum R:R
@@ -317,7 +321,11 @@ class VWAPBreak(PatternDetector):
 
         current_vwap = df.iloc[-1]["vwap"]
         entry_price = current_vwap + 0.02
-        stop_price = hold_result["touch_low"] - 0.05
+        touch_low = hold_result["touch_low"]
+        pct_buffer = touch_low * (self.config["stop_buffer_pct"] / 100)
+        min_buffer = self.config["stop_buffer_min_cents"] / 100
+        stop_buffer = max(pct_buffer, min_buffer)
+        stop_price = touch_low - stop_buffer
         stop_distance_cents = (entry_price - stop_price) * 100
 
         # Enforce minimum R:R for hold pattern

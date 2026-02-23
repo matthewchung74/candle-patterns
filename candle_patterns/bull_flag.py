@@ -60,7 +60,8 @@ class BullFlag(PatternDetector):
 
             # Risk
             "stop_loss": "low_of_flag",
-            "stop_buffer_cents": 5,  # Buffer below flag low
+            "stop_buffer_pct": 0.5,  # 0.5% below flag low
+            "stop_buffer_min_cents": 5,  # Minimum 5 cents buffer
 
             # Flag consolidation
             "max_flag_range_pct": 15.0,  # Max range for tight consolidation
@@ -167,7 +168,9 @@ class BullFlag(PatternDetector):
                 f"(>{max_entry_deviation_pct}% deviation - possible stale data)"
             )
 
-        stop_buffer = self.config["stop_buffer_cents"] / 100
+        pct_buffer = flag_low * (self.config["stop_buffer_pct"] / 100)
+        min_buffer = self.config["stop_buffer_min_cents"] / 100
+        stop_buffer = max(pct_buffer, min_buffer)
         stop_price = flag_low - stop_buffer
         stop_distance_cents = (entry_price - stop_price) * 100
 
