@@ -5,7 +5,7 @@ Micro Pullback Test Fixtures
 Comprehensive limit/boundary testing for the NEW Micro Pullback rules:
 - Prior move: 5-15% (>15% routes to Bull Flag)
 - Pullback: ≤12% retracement
-- Duration: ≤6 candles
+- Duration: ≤2 candles
 - Entry: First green candle after pullback (aggressive)
 - Minimum 6 bars required
 
@@ -46,10 +46,9 @@ MP_PASS_VALID = _make_bars([
     (10.30, 10.65, 10.28, 10.60, 220000),  # green +2.9%
     (10.60, 11.02, 10.58, 11.00, 250000),  # green +3.8% (swing high: 11.02)
 
-    # Pullback: 8% from 11.02 → low ~10.14 (3 candles)
+    # Pullback: 8% from 11.02 → low ~10.14 (2 candles)
     (11.00, 11.01, 10.50, 10.55, 100000),  # red
-    (10.55, 10.58, 10.20, 10.25, 90000),   # red
-    (10.25, 10.30, 10.14, 10.18, 80000),   # red (low: 10.14 = 8% pullback)
+    (10.55, 10.58, 10.14, 10.18, 80000),   # red (low: 10.14 = 8% pullback)
 
     # Entry: green bounce
     (10.18, 10.50, 10.15, 10.45, 200000),  # GREEN entry
@@ -120,8 +119,8 @@ MP_PASS_MAX_PULLBACK = _make_bars([
 
 
 # -----------------------------------------------------------------------------
-# MP_PASS_MAX_DURATION: Pullback at exactly 6 candles (maximum)
-# Tests: max_pullback_candles = 6
+# MP_PASS_MAX_DURATION: Pullback at exactly 2 candles (maximum)
+# Tests: max_pullback_candles = 2
 # -----------------------------------------------------------------------------
 MP_PASS_MAX_DURATION = _make_bars([
     # Surge: 10% move (3 green candles)
@@ -129,13 +128,9 @@ MP_PASS_MAX_DURATION = _make_bars([
     (10.32, 10.68, 10.30, 10.65, 220000),  # green
     (10.65, 11.02, 10.62, 11.00, 250000),  # green (high: 11.02)
 
-    # Pullback: exactly 6 candles (at limit), shallow 5%
+    # Pullback: exactly 2 candles (at limit), shallow 5%
     (11.00, 11.01, 10.70, 10.72, 100000),  # red candle 1
-    (10.72, 10.75, 10.60, 10.62, 95000),   # red candle 2
-    (10.62, 10.65, 10.55, 10.58, 90000),   # red candle 3
-    (10.58, 10.60, 10.50, 10.52, 85000),   # red candle 4
-    (10.52, 10.55, 10.48, 10.50, 80000),   # red candle 5
-    (10.50, 10.52, 10.45, 10.47, 75000),   # red candle 6 (low: 10.45 = 5% from 11.02)
+    (10.72, 10.75, 10.45, 10.47, 95000),   # red candle 2 (low: 10.45 = 5% from 11.02)
 
     # Entry: green bounce
     (10.47, 10.80, 10.45, 10.75, 200000),  # GREEN entry
@@ -247,8 +242,8 @@ MP_FAIL_PULLBACK_TOO_DEEP = _make_bars([
 
 
 # -----------------------------------------------------------------------------
-# MP_FAIL_DURATION_TOO_LONG: Pullback at 7 candles (above 6 maximum)
-# Tests: max_pullback_candles = 6
+# MP_FAIL_DURATION_TOO_LONG: Pullback at 3 candles (above 2 maximum)
+# Tests: max_pullback_candles = 2
 # -----------------------------------------------------------------------------
 MP_FAIL_DURATION_TOO_LONG = _make_bars([
     # Surge: 10% move
@@ -256,17 +251,13 @@ MP_FAIL_DURATION_TOO_LONG = _make_bars([
     (10.32, 10.68, 10.30, 10.65, 220000),  # green
     (10.65, 11.02, 10.62, 11.00, 250000),  # green (high: 11.02)
 
-    # Pullback: 7 candles (above 6 limit)
+    # Pullback: 3 candles (above 2 limit)
     (11.00, 11.01, 10.75, 10.78, 100000),  # red candle 1
     (10.78, 10.80, 10.68, 10.70, 95000),   # red candle 2
-    (10.70, 10.72, 10.62, 10.65, 90000),   # red candle 3
-    (10.65, 10.68, 10.58, 10.60, 85000),   # red candle 4
-    (10.60, 10.62, 10.55, 10.57, 80000),   # red candle 5
-    (10.57, 10.60, 10.52, 10.54, 75000),   # red candle 6
-    (10.54, 10.56, 10.50, 10.52, 70000),   # red candle 7 (exceeds limit)
+    (10.70, 10.72, 10.55, 10.58, 90000),   # red candle 3 (exceeds limit)
 
     # Entry attempt
-    (10.52, 10.85, 10.50, 10.80, 200000),  # green
+    (10.58, 10.85, 10.55, 10.80, 200000),  # green
 ])
 
 

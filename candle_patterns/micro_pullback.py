@@ -51,7 +51,7 @@ class MicroPullback(PatternDetector):
 
             # Shallow pullback limits (tighter than Bull Flag)
             "max_pullback_pct": 12.0,  # Max 12% retracement (shallow only)
-            "max_pullback_candles": 6,  # Max 6 candles in pullback
+            "max_pullback_candles": 2,  # Max 2 candles in pullback (micro = tight)
 
             # Entry trigger - Ross's style (aggressive)
             "entry": "first_green_after_pullback",

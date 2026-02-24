@@ -8,7 +8,7 @@ Rules tested:
 - min_prior_move_pct: 5.0%
 - max_prior_move_pct: 15.0%
 - max_pullback_pct: 12.0%
-- max_pullback_candles: 6
+- max_pullback_candles: 2
 - >50% green candles in surge
 - Entry candle must be green
 - min_rr_for_setup: 2.0
@@ -61,7 +61,7 @@ class TestMicroPullbackDetection:
         # Verify details
         assert 5.0 <= result.details["prior_move_pct"] <= 15.0
         assert result.details["pullback_pct"] <= 12.0
-        assert result.details["pullback_candles"] <= 6
+        assert result.details["pullback_candles"] <= 2
 
     def test_pass_min_prior_move_boundary(self):
         """Test detection with prior move at 5.1% (just above 5% minimum)."""
@@ -87,11 +87,11 @@ class TestMicroPullbackDetection:
         assert result.details["pullback_pct"] <= 12.0
 
     def test_pass_max_duration_boundary(self):
-        """Test detection with exactly 6 pullback candles (maximum)."""
+        """Test detection with exactly 2 pullback candles (maximum)."""
         result = self.detector.detect(MP_PASS_MAX_DURATION)
 
         assert result.detected is True
-        assert result.details["pullback_candles"] == 6
+        assert result.details["pullback_candles"] == 2
 
     def test_pass_min_green_ratio_boundary(self):
         """Test detection with 60% green ratio (just above 50% minimum)."""
@@ -133,7 +133,7 @@ class TestMicroPullbackDetection:
         assert "deep" in result.reason.lower()
 
     def test_fail_duration_too_long(self):
-        """Test rejection when pullback is 7 candles (above 6 maximum)."""
+        """Test rejection when pullback is 3 candles (above 2 maximum)."""
         result = self.detector.detect(MP_FAIL_DURATION_TOO_LONG)
 
         assert result.detected is False
@@ -171,7 +171,7 @@ class TestMicroPullbackConfig:
         assert detector.config["min_prior_move_pct"] == 5.0
         assert detector.config["max_prior_move_pct"] == 15.0
         assert detector.config["max_pullback_pct"] == 12.0
-        assert detector.config["max_pullback_candles"] == 6
+        assert detector.config["max_pullback_candles"] == 2
         assert detector.config["entry"] == "first_green_after_pullback"
 
     def test_custom_config_override(self):
