@@ -184,6 +184,7 @@ class VWAPBreak(PatternDetector):
             details={
                 "bars_below_vwap": bars_below,
                 "break_bar_idx": break_idx,
+                "break_time": self._bar_time(df, break_idx),
                 "volume_spike": volume_spike,
                 "current_vwap": current_vwap,
             },
@@ -379,7 +380,9 @@ class VWAPBreak(PatternDetector):
             details={
                 "variant": "hold",
                 "touch_idx": hold_result["touch_idx"],
+                "touch_time": self._bar_time(df, hold_result["touch_idx"]),
                 "entry_idx": hold_result["entry_idx"],
+                "entry_time": self._bar_time(df, hold_result["entry_idx"]),
                 "vwap_at_touch": hold_result["vwap_at_touch"],
             },
         )

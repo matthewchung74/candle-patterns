@@ -354,6 +354,7 @@ class MicroPullback(PatternDetector):
                 "green_candles": int(green_count),
                 "pullback_candles": pullback_candle_count,
                 "swing_high": swing_high,
+                "swing_high_time": self._bar_time(df, swing_high_idx_relative),
                 "pullback_low": pullback_low,
                 "surge_volume_avg": surge_volume,
                 "pullback_volume_avg": pullback_volume,

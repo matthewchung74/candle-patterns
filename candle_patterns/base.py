@@ -220,6 +220,15 @@ class PatternDetector(ABC):
             "histogram": histogram,
         })
 
+    @staticmethod
+    def _bar_time(df: pd.DataFrame, idx: int) -> str:
+        """Get HH:MM timestamp string for a bar index."""
+        if "timestamp" in df.columns and 0 <= idx < len(df):
+            ts = df.iloc[idx]["timestamp"]
+            if hasattr(ts, "strftime"):
+                return ts.strftime("%H:%M")
+        return ""
+
     def not_detected(self, reason: str) -> PatternResult:
         """Helper to return a non-detected result with reason."""
         return PatternResult(
