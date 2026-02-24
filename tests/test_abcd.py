@@ -314,6 +314,48 @@ class TestABCDEdgeCases:
         result = self.detector.detect(fixture["bars"], vwap=vwap, macd=macd)
         assert isinstance(result, PatternResult)
 
+    def test_zero_volume_halt_bars_ignored(self):
+        """Test that zero-volume bars (trading halts) are skipped in swing detection."""
+        # Create bars where the only swing points have zero volume (halt bars)
+        # This reproduces the ANPA phantom detection bug
+        bars = []
+        base_time = datetime(2024, 1, 15, 9, 30)
+
+        # Build 20 bars: flat price with zero-volume halt bars that create phantom swings
+        for i in range(20):
+            t = base_time + timedelta(minutes=i)
+            if i == 8:
+                # Phantom swing high — zero volume halt bar with price anomaly
+                # (reproduces ANPA bug: halt bar creates detectable swing point)
+                bars.append({
+                    "timestamp": t,
+                    "open": 10.28, "high": 10.35, "low": 10.28, "close": 10.28,
+                    "volume": 0,
+                })
+            elif 5 <= i <= 12:
+                # Halt bars: zero volume, flat price
+                bars.append({
+                    "timestamp": t,
+                    "open": 10.28, "high": 10.28, "low": 10.28, "close": 10.28,
+                    "volume": 0,
+                })
+            else:
+                # Normal trading bars
+                bars.append({
+                    "timestamp": t,
+                    "open": 10.00 + i * 0.05,
+                    "high": 10.05 + i * 0.05,
+                    "low": 9.95 + i * 0.05,
+                    "close": 10.02 + i * 0.05,
+                    "volume": 50000,
+                })
+
+        df = pd.DataFrame(bars)
+        result = self.detector.detect(df)
+
+        # Should not detect a pattern from halt bars
+        assert result.detected is False
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

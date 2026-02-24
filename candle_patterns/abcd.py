@@ -124,6 +124,10 @@ class ABCD(PatternDetector):
         swing_highs = []
 
         for i in range(lookback, len(df) - lookback):
+            # Skip zero-volume bars (trading halts produce phantom swings)
+            if df.iloc[i]["volume"] <= 0:
+                continue
+
             is_swing = True
             current_high = df.iloc[i]["high"]
 
@@ -147,6 +151,10 @@ class ABCD(PatternDetector):
         swing_lows = []
 
         for i in range(lookback, len(df) - lookback):
+            # Skip zero-volume bars (trading halts produce phantom swings)
+            if df.iloc[i]["volume"] <= 0:
+                continue
+
             is_swing = True
             current_low = df.iloc[i]["low"]
 
