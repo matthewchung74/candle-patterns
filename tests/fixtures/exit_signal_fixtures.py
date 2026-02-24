@@ -285,10 +285,11 @@ VOLUME_DECLINE_VALID = {
     "bars": _make_bars([
         # Entry bar - 100k volume
         (10.00, 10.10, 9.95, 10.05, 100000),
-        # Post-entry bars with declining volume (avg = 40k)
-        (10.05, 10.15, 10.00, 10.10, 45000),
-        (10.10, 10.18, 10.05, 10.12, 38000),
-        (10.12, 10.20, 10.08, 10.15, 37000),
+        # Post-entry bars with declining volume AND stalling price
+        # recent_bars[0].open = 10.05, recent_bars[-1].close = 10.00
+        (10.05, 10.08, 9.98, 10.02, 45000),
+        (10.02, 10.05, 9.95, 9.98, 38000),
+        (9.98, 10.02, 9.92, 10.00, 37000),
     ]),
 }
 
@@ -356,10 +357,31 @@ VOLUME_DECLINE_LIMIT_AT_49 = {
     "bars": _make_bars([
         # Entry bar - 100k volume
         (10.00, 10.10, 9.95, 10.05, 100000),
-        # Post-entry bars with 49% avg volume
-        (10.05, 10.15, 10.00, 10.10, 49000),
-        (10.10, 10.18, 10.05, 10.12, 49000),
-        (10.12, 10.20, 10.08, 10.15, 49000),
+        # Post-entry bars with 49% avg volume AND stalling price
+        # recent_bars[0].open = 10.05, recent_bars[-1].close = 10.01
+        (10.05, 10.08, 9.98, 10.02, 49000),
+        (10.02, 10.05, 9.95, 9.98, 49000),
+        (9.98, 10.03, 9.95, 10.01, 49000),
+    ]),
+}
+
+
+# =============================================================================
+# VOLUME DECLINE - REJECTED: Low volume but price still rising
+# =============================================================================
+# Entry volume 100k, last 3 bars avg 30k but price making new highs.
+# Should NOT trigger — stock is still running.
+
+VOLUME_DECLINE_PRICE_RISING = {
+    "entry_idx": 0,
+    "bars": _make_bars([
+        # Entry bar - 100k volume
+        (10.00, 10.10, 9.95, 10.05, 100000),
+        # Post-entry bars with low volume BUT price rising
+        # recent_bars[0].open = 10.10, recent_bars[-1].close = 10.40
+        (10.10, 10.20, 10.05, 10.18, 30000),
+        (10.18, 10.30, 10.15, 10.28, 28000),
+        (10.28, 10.45, 10.25, 10.40, 32000),
     ]),
 }
 

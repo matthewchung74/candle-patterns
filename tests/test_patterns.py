@@ -48,6 +48,7 @@ from tests.fixtures.exit_signal_fixtures import (
     VOLUME_DECLINE_STAYS_HIGH,
     VOLUME_DECLINE_LIMIT_AT_50,
     VOLUME_DECLINE_LIMIT_AT_49,
+    VOLUME_DECLINE_PRICE_RISING,
     # Jackknife
     JACKKNIFE_VALID,
     JACKKNIFE_NOT_ENOUGH_BARS,
@@ -266,12 +267,18 @@ class TestVolumDeclineExit:
         assert signal is None
 
     def test_limit_volume_at_49_percent(self):
-        """Test that 49% volume triggers."""
+        """Test that 49% volume triggers when price is stalling."""
         signal = self._get_volume_signal(VOLUME_DECLINE_LIMIT_AT_49)
 
         assert signal is not None
         assert signal.signal_type == "volume_decline"
         assert signal.triggered is True
+
+    def test_low_volume_but_price_rising(self):
+        """Test that low volume does NOT trigger when price is still rising."""
+        signal = self._get_volume_signal(VOLUME_DECLINE_PRICE_RISING)
+
+        assert signal is None  # Price rising = no exit despite low volume
 
 
 class TestMACDCrossExit:

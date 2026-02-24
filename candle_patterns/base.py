@@ -502,6 +502,8 @@ class PatternDetector(ABC):
         Check for significant volume decline after entry.
 
         Declining volume on continuation = weakness, potential exit.
+        Requires BOTH volume decline AND price stalling to avoid
+        exiting positions that are still running on lighter volume.
         """
         if entry_idx >= len(df) - 3:
             return None  # Need at least 3 bars after entry
@@ -513,13 +515,24 @@ class PatternDetector(ABC):
             return None
 
         # Check if last 3 bars have declining volume < 50% of entry
-        recent_avg_vol = post_entry.tail(3)["volume"].mean()
+        recent_bars = post_entry.tail(3)
+        recent_avg_vol = recent_bars["volume"].mean()
 
-        if recent_avg_vol < entry_volume * 0.5:
+        if recent_avg_vol >= entry_volume * 0.5:
+            return None
+
+        # Volume is low — only exit if price is also stalling/declining
+        # (don't exit if price is still making new highs on lighter volume)
+        price_stalling = recent_bars.iloc[-1]["close"] <= recent_bars.iloc[0]["open"]
+
+        if price_stalling:
             return ExitSignal(
                 signal_type="volume_decline",
                 triggered=True,
-                reason=f"Volume declining: {recent_avg_vol:.0f} < 50% of entry vol {entry_volume:.0f}",
+                reason=(
+                    f"Volume declining: {recent_avg_vol:.0f} < 50% of entry vol "
+                    f"{entry_volume:.0f}, price stalling"
+                ),
                 bar_idx=len(df) - 1,
                 price=df.iloc[-1]["close"],
             )
