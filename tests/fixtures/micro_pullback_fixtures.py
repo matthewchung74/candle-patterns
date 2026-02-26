@@ -345,6 +345,26 @@ MP_FAIL_RR_TOO_LOW = _make_bars([
 ])
 
 
+# -----------------------------------------------------------------------------
+# MP_FAIL_PULLBACK_VOLUME_TOO_HEAVY: Pullback avg volume > 75% of surge avg volume
+# Tests: max_pullback_surge_volume_ratio = 0.75
+# Heavy pullback volume = distribution, not healthy consolidation
+# -----------------------------------------------------------------------------
+MP_FAIL_PULLBACK_VOLUME_TOO_HEAVY = _make_bars([
+    # Surge: 10% move, MODERATE volume (avg ~150k)
+    (10.00, 10.35, 9.98, 10.30, 130000),  # green
+    (10.30, 10.65, 10.28, 10.60, 150000),  # green
+    (10.60, 11.02, 10.58, 11.00, 170000),  # green (swing high: 11.02)
+
+    # Pullback: HEAVY volume (avg 200k = 133% of surge avg 150k, way above 75%)
+    (11.00, 11.01, 10.50, 10.55, 180000),  # red, heavy selling
+    (10.55, 10.58, 10.14, 10.18, 220000),  # red, even heavier
+
+    # Entry: green bounce
+    (10.18, 10.50, 10.15, 10.45, 200000),  # GREEN entry
+])
+
+
 # =============================================================================
 # EXPORT ALL FIXTURES
 # =============================================================================
@@ -367,4 +387,5 @@ __all__ = [
     "MP_FAIL_GREEN_RATIO_LOW",
     "MP_FAIL_LAST_BAR_RED",
     "MP_FAIL_RR_TOO_LOW",
+    "MP_FAIL_PULLBACK_VOLUME_TOO_HEAVY",
 ]

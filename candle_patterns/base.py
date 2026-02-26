@@ -221,6 +221,16 @@ class PatternDetector(ABC):
         })
 
     @staticmethod
+    def _avg_volume(df: pd.DataFrame, start_idx: int, end_idx: int) -> float:
+        """Average volume for bars in [start_idx, end_idx] inclusive, skipping zero-volume."""
+        vols = [
+            df.iloc[i]["volume"]
+            for i in range(start_idx, end_idx + 1)
+            if df.iloc[i]["volume"] > 0
+        ]
+        return sum(vols) / len(vols) if vols else 0.0
+
+    @staticmethod
     def _bar_time(df: pd.DataFrame, idx: int) -> str:
         """Get HH:MM timestamp string for a bar index."""
         if "timestamp" in df.columns and 0 <= idx < len(df):

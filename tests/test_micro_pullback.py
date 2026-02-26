@@ -35,6 +35,7 @@ from tests.fixtures.micro_pullback_fixtures import (
     MP_FAIL_GREEN_RATIO_LOW,
     MP_FAIL_LAST_BAR_RED,
     MP_FAIL_RR_TOO_LOW,
+    MP_FAIL_PULLBACK_VOLUME_TOO_HEAVY,
 )
 
 
@@ -159,6 +160,38 @@ class TestMicroPullbackDetection:
 
         assert result.detected is False
         # May fail on R:R or other criteria
+
+
+class TestMicroPullbackVolumeProfile:
+    """Tests for Micro Pullback volume profile gate (pullback vs surge)."""
+
+    def setup_method(self):
+        self.detector = MicroPullback()
+
+    def test_pullback_rejected_when_volume_too_heavy(self):
+        """Test rejection when pullback avg volume > 75% of surge avg volume."""
+        result = self.detector.detect(MP_FAIL_PULLBACK_VOLUME_TOO_HEAVY)
+
+        assert result.detected is False
+        assert "volume" in result.reason.lower()
+
+    def test_volume_gate_disabled_when_ratio_zero(self):
+        """Test that setting max_pullback_surge_volume_ratio=0 disables the gate."""
+        detector = MicroPullback({"max_pullback_surge_volume_ratio": 0})
+        result = detector.detect(MP_FAIL_PULLBACK_VOLUME_TOO_HEAVY)
+
+        # Should pass now (heavy volume no longer blocks)
+        assert result.detected is True
+
+    def test_details_include_volume_ratio(self):
+        """Test that detected patterns include volume ratio in details."""
+        result = self.detector.detect(MP_PASS_VALID)
+
+        assert result.detected is True
+        assert "surge_volume_avg" in result.details
+        assert "pullback_volume_avg" in result.details
+        assert "pullback_volume_ratio" in result.details
+        assert result.details["pullback_volume_ratio"] < 0.75
 
 
 class TestMicroPullbackConfig:

@@ -94,7 +94,7 @@ detector = MicroPullback({
     "max_prior_move_pct": 15.0,      # Max 15% (larger moves -> Bull Flag)
     "min_green_candles_prior": 2,     # At least 2 green candles in prior move
     "max_pullback_pct": 12.0,        # Max 12% retracement
-    "max_pullback_candles": 6,        # Max 6 candles in pullback
+    "max_pullback_candles": 3,        # Max 3 candles in pullback (micro = tight)
     "require_above_vwap": True,       # HARD GATE: must be above VWAP
     "require_macd_positive": True,    # HARD GATE: MACD histogram > 0
     "stop_buffer_pct": 1.0,           # 1% below pullback low
@@ -240,14 +240,27 @@ Bullish ABCD:
     C - Higher low (BC retracement of 38.2%-78.6% of AB)
     D - Projected target where CD ≈ AB
 
-       B
-      /\        D
-     /  \      /
-    /    \    /
-   A      \  /
-           C
+    B         D
+   / \       /
+  /   \   C /
+ /     \ / \
+A       v
 
 Entry at D completion, stop below C
+
+Bearish ABCD:
+    A - Swing high (start of impulse)
+    B - Swing low (end of AB leg)
+    C - Lower high (BC retracement of 38.2%-78.6% of AB)
+    D - Projected target where CD ≈ AB
+
+A       ^
+ \     / \
+  \   /   C \
+   \ /       \
+    B         D
+
+Entry at D completion, stop above C
 ```
 
 **Configuration:**

@@ -41,6 +41,7 @@ from tests.fixtures.bull_flag_fixtures import (
     BF_FAIL_FLAG_TOO_WIDE,
     BF_FAIL_VOLUME_RISING,
     BF_FAIL_NO_BREAKOUT,
+    BF_FAIL_FLAG_VOLUME_TOO_HEAVY,
 )
 
 
@@ -182,6 +183,39 @@ class TestBullFlagDetection:
 
         assert result.detected is False
         assert "breakout" in result.reason.lower()
+
+
+class TestBullFlagVolumeProfile:
+    """Tests for Bull Flag volume profile gate (flag vs pole)."""
+
+    def setup_method(self):
+        self.detector = BullFlag()
+
+    def test_flag_rejected_when_flag_volume_too_heavy(self):
+        """Test rejection when flag avg volume > 75% of pole avg volume."""
+        result = self.detector.detect(BF_FAIL_FLAG_VOLUME_TOO_HEAVY)
+
+        assert result.detected is False
+        assert "volume" in result.reason.lower()
+
+    def test_volume_gate_disabled_when_ratio_zero(self):
+        """Test that setting max_flag_pole_volume_ratio=0 disables the gate."""
+        detector = BullFlag({"max_flag_pole_volume_ratio": 0})
+        result = detector.detect(BF_FAIL_FLAG_VOLUME_TOO_HEAVY)
+
+        # Should pass now (heavy volume no longer blocks)
+        assert result.detected is True
+
+    def test_details_include_volume_ratios(self):
+        """Test that detected patterns include volume profile in details."""
+        result = self.detector.detect(BF_PASS_VALID)
+
+        assert result.detected is True
+        assert "pole_avg_vol" in result.details
+        assert "flag_avg_vol" in result.details
+        assert "flag_volume_ratio" in result.details
+        # Valid fixture should have flag volume well below pole
+        assert result.details["flag_volume_ratio"] < 0.75
 
 
 class TestBullFlagConfig:

@@ -56,6 +56,12 @@ class ABCD(PatternDetector):
             "cd_ab_ratio_max": 1.25,  # CD must be at most 125% of AB
             "cd_min_completion": 0.80,  # CD must be at least 80% developed
 
+            # Pre-pattern momentum: require N consecutive green/red candles
+            # before point A to confirm the stock was trending into the pattern.
+            # Bullish: green candles before A (uptrend dipped to A)
+            # Bearish: red candles before A (downtrend bounced to A)
+            "min_pre_a_candles": 3,
+
             # Minimum leg size (as percentage of price)
             "min_leg_pct": 1.0,  # AB leg must be at least 1% move
 
@@ -64,6 +70,12 @@ class ABCD(PatternDetector):
 
             # Pattern completion tolerance
             "d_completion_tolerance": 0.02,  # 2% tolerance for D level
+
+            # Volume profile: BC pullback should be lighter than AB impulse,
+            # and CD completion should show volume returning.
+            # Set to 0 to disable either check.
+            "max_bc_volume_ratio": 0.75,  # BC avg vol must be <= 75% of AB avg vol
+            "min_cd_bc_volume_ratio": 1.0,  # CD avg vol must be >= 100% of BC avg vol
 
             # Direction filter (None = detect both, "long" or "short")
             "direction_filter": None,
@@ -240,6 +252,67 @@ class ABCD(PatternDetector):
 
         return None
 
+    def _check_pre_a_momentum(
+        self, df: pd.DataFrame, a_idx: int, direction: str
+    ) -> bool:
+        """Check for consecutive trending candles before point A.
+
+        Bullish: requires green candles (close > open) before A — confirms uptrend.
+        Bearish: requires red candles (close < open) before A — confirms downtrend.
+
+        Returns True if requirement met or disabled (min_pre_a_candles <= 0).
+        """
+        min_candles = self.config.get("min_pre_a_candles", 3)
+        if min_candles <= 0:
+            return True  # Disabled
+
+        # Need enough bars before A
+        if a_idx < min_candles:
+            return False
+
+        for i in range(a_idx - min_candles, a_idx):
+            bar = df.iloc[i]
+            if direction == "long":
+                if bar["close"] <= bar["open"]:
+                    return False  # Not a green candle
+            else:
+                if bar["close"] >= bar["open"]:
+                    return False  # Not a red candle
+
+        return True
+
+    def _check_volume_profile(
+        self, df: pd.DataFrame, a_idx: int, b_idx: int, c_idx: int
+    ) -> Optional[Dict[str, Any]]:
+        """Check volume profile across AB, BC, and CD legs.
+
+        BC pullback should be lighter than AB impulse, and CD completion
+        should show volume returning above BC levels.
+
+        Returns dict with volume stats if checks pass, None if rejected.
+        """
+        ab_vol = self._avg_volume(df, a_idx, b_idx)
+        bc_vol = self._avg_volume(df, b_idx, c_idx)
+        cd_vol = self._avg_volume(df, c_idx, len(df) - 1)
+
+        max_bc_ratio = self.config.get("max_bc_volume_ratio", 0.75)
+        if max_bc_ratio > 0 and ab_vol > 0:
+            if bc_vol / ab_vol > max_bc_ratio:
+                return None  # Pullback too heavy — not a healthy retrace
+
+        min_cd_ratio = self.config.get("min_cd_bc_volume_ratio", 1.0)
+        if min_cd_ratio > 0 and bc_vol > 0:
+            if cd_vol / bc_vol < min_cd_ratio:
+                return None  # CD volume too low — no conviction
+
+        return {
+            "ab_avg_vol": round(ab_vol),
+            "bc_avg_vol": round(bc_vol),
+            "cd_avg_vol": round(cd_vol),
+            "bc_volume_ratio": round(bc_vol / ab_vol, 2) if ab_vol > 0 else 0,
+            "cd_bc_volume_ratio": round(cd_vol / bc_vol, 2) if bc_vol > 0 else 0,
+        }
+
     def _validate_bullish_abcd(
         self,
         df: pd.DataFrame,
@@ -258,6 +331,10 @@ class ABCD(PatternDetector):
         # Check minimum leg size
         min_leg_pct = self.config["min_leg_pct"]
         if (ab_move / a_price) * 100 < min_leg_pct:
+            return None
+
+        # Check pre-A momentum (require green candles before A)
+        if not self._check_pre_a_momentum(df, a_idx, "long"):
             return None
 
         # BC retracement (downward from B to C)
@@ -303,6 +380,11 @@ class ABCD(PatternDetector):
         if cd_ab_ratio < min_completion:
             return None  # CD leg not developed enough
 
+        # Volume profile check
+        vol_profile = self._check_volume_profile(df, a_idx, b_idx, c_idx)
+        if vol_profile is None:
+            return None
+
         # Entry at current price (or projected D)
         entry_price = current_price if current_price < projected_d else projected_d
 
@@ -346,6 +428,7 @@ class ABCD(PatternDetector):
                 "ab_move": ab_move,
                 "bc_retracement": bc_retracement,
                 "cd_ab_ratio": cd_ab_ratio,
+                **vol_profile,
             },
         )
 
@@ -367,6 +450,10 @@ class ABCD(PatternDetector):
         # Check minimum leg size
         min_leg_pct = self.config["min_leg_pct"]
         if (ab_move / a_price) * 100 < min_leg_pct:
+            return None
+
+        # Check pre-A momentum (require red candles before A)
+        if not self._check_pre_a_momentum(df, a_idx, "short"):
             return None
 
         # BC retracement (upward from B to C)
@@ -403,6 +490,11 @@ class ABCD(PatternDetector):
         min_completion = self.config.get("cd_min_completion", 0.80)
         if cd_ab_ratio < min_completion:
             return None  # CD leg not developed enough
+
+        # Volume profile check
+        vol_profile = self._check_volume_profile(df, a_idx, b_idx, c_idx)
+        if vol_profile is None:
+            return None
 
         # Entry at current price (or projected D)
         entry_price = current_price if current_price > projected_d else projected_d
@@ -444,5 +536,6 @@ class ABCD(PatternDetector):
                 "ab_move": ab_move,
                 "bc_retracement": bc_retracement,
                 "cd_ab_ratio": cd_ab_ratio,
+                **vol_profile,
             },
         )

@@ -357,5 +357,127 @@ class TestABCDEdgeCases:
         assert result.detected is False
 
 
+class TestABCDPreAMomentum:
+    """Tests for pre-A momentum candle requirement."""
+
+    def test_bullish_rejected_when_pre_a_candles_red(self):
+        """Bullish ABCD rejected when 3 candles before A are red (no uptrend)."""
+        fixture = ABCD_PASS_BULLISH_VALID
+        bars = fixture["bars"].copy()
+
+        # Flip pre-A candles (indices 0-2) from green to red
+        for i in range(3):
+            orig_open = bars.at[i, "open"]
+            orig_close = bars.at[i, "close"]
+            bars.at[i, "open"] = max(orig_open, orig_close) + 0.01
+            bars.at[i, "close"] = min(orig_open, orig_close)
+
+        detector = ABCD()
+        result = detector.detect(bars)
+        assert result.detected is False
+
+    def test_bearish_rejected_when_pre_a_candles_green(self):
+        """Bearish ABCD rejected when 3 candles before A are green (no downtrend)."""
+        fixture = ABCD_PASS_BEARISH_VALID
+        bars = fixture["bars"].copy()
+
+        # Flip pre-A candles (indices 0-2) from red to green
+        for i in range(3):
+            orig_open = bars.at[i, "open"]
+            orig_close = bars.at[i, "close"]
+            bars.at[i, "open"] = min(orig_open, orig_close)
+            bars.at[i, "close"] = max(orig_open, orig_close) + 0.01
+
+        detector = ABCD()
+        result = detector.detect(bars)
+        assert result.detected is False
+
+    def test_check_disabled_when_min_pre_a_candles_zero(self):
+        """Pattern detected regardless of candle color when check is disabled."""
+        fixture = ABCD_PASS_BULLISH_VALID
+        bars = fixture["bars"].copy()
+
+        # Flip pre-A candles to red (would normally reject)
+        for i in range(3):
+            orig_open = bars.at[i, "open"]
+            orig_close = bars.at[i, "close"]
+            bars.at[i, "open"] = max(orig_open, orig_close) + 0.01
+            bars.at[i, "close"] = min(orig_open, orig_close)
+
+        detector = ABCD({"min_pre_a_candles": 0})
+        result = detector.detect(bars)
+        assert result.detected is True
+
+
+class TestABCDVolumeProfile:
+    """Tests for volume profile checks (BC < AB, CD > BC)."""
+
+    def test_bullish_rejected_when_bc_volume_too_heavy(self):
+        """Bullish rejected when BC pullback volume exceeds 75% of AB impulse."""
+        fixture = ABCD_PASS_BULLISH_VALID
+        bars = fixture["bars"].copy()
+
+        # Inflate BC zone volume (indices after B through C) to exceed AB
+        # B is typically around index 7, C around index 13-14
+        for i in range(len(bars)):
+            if bars.at[i, "volume"] < 60000:  # BC bars have low volume
+                bars.at[i, "volume"] = 200000  # Make heavier than AB
+
+        detector = ABCD()
+        result = detector.detect(bars)
+        assert result.detected is False
+
+    def test_bullish_rejected_when_cd_volume_too_low(self):
+        """Bullish rejected when CD volume is below 100% of BC."""
+        fixture = ABCD_PASS_BULLISH_VALID
+        bars = fixture["bars"].copy()
+
+        # Suppress CD zone volume (last ~7 bars including post-C and CD)
+        for i in range(len(bars) - 7, len(bars)):
+            bars.at[i, "volume"] = 10000  # Much lower than BC
+
+        detector = ABCD()
+        result = detector.detect(bars)
+        assert result.detected is False
+
+    def test_volume_check_disabled_when_ratio_zero(self):
+        """Pattern detected when volume checks disabled (ratios set to 0)."""
+        fixture = ABCD_PASS_BULLISH_VALID
+        bars = fixture["bars"].copy()
+
+        # Set all volumes to the same value (would normally fail BC ratio)
+        for i in range(len(bars)):
+            bars.at[i, "volume"] = 100000
+
+        detector = ABCD({"max_bc_volume_ratio": 0, "min_cd_bc_volume_ratio": 0})
+        result = detector.detect(bars)
+        assert result.detected is True
+
+    def test_bullish_details_include_volume_ratios(self):
+        """Bullish pattern includes volume ratio details for logging."""
+        fixture = ABCD_PASS_BULLISH_VALID
+        detector = ABCD()
+        result = detector.detect(fixture["bars"])
+
+        assert result.detected is True
+        assert "ab_avg_vol" in result.details
+        assert "bc_avg_vol" in result.details
+        assert "cd_avg_vol" in result.details
+        assert "bc_volume_ratio" in result.details
+        assert "cd_bc_volume_ratio" in result.details
+        assert result.details["bc_volume_ratio"] <= 0.75
+        assert result.details["cd_bc_volume_ratio"] >= 1.0
+
+    def test_bearish_details_include_volume_ratios(self):
+        """Bearish pattern includes volume ratio details for logging."""
+        fixture = ABCD_PASS_BEARISH_VALID
+        detector = ABCD()
+        result = detector.detect(fixture["bars"])
+
+        assert result.detected is True
+        assert result.details["bc_volume_ratio"] <= 0.75
+        assert result.details["cd_bc_volume_ratio"] >= 1.0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -51,7 +51,7 @@ class MicroPullback(PatternDetector):
 
             # Shallow pullback limits (tighter than Bull Flag)
             "max_pullback_pct": 12.0,  # Max 12% retracement (shallow only)
-            "max_pullback_candles": 2,  # Max 2 candles in pullback (micro = tight)
+            "max_pullback_candles": 3,  # Max 3 candles in pullback (micro = tight)
 
             # Entry trigger - Ross's style (aggressive)
             "entry": "first_green_after_pullback",
@@ -67,6 +67,11 @@ class MicroPullback(PatternDetector):
 
             # Minimum bars needed
             "min_bars_required": 6,
+
+            # Volume profile: pullback avg volume must be lighter than surge avg volume.
+            # Heavy pullback volume = distribution, not healthy consolidation.
+            # Set to 0 to disable.
+            "max_pullback_surge_volume_ratio": 0.75,
 
             # Quality filter
             "min_rr_for_setup": 2.0,
@@ -268,9 +273,19 @@ class MicroPullback(PatternDetector):
                 f"R:R too low: {estimated_rr:.1f} < {min_rr}"
             )
 
-        # Step 8: Volume confirmation
-        surge_volume = surge_window["volume"].mean()
-        pullback_volume = pullback_window["volume"].mean() if len(pullback_window) > 0 else 0
+        # Step 8: Volume profile gate — pullback must be lighter than surge
+        surge_volume = self._avg_volume(df, surge_start_idx, surge_end_idx)
+        pullback_volume = self._avg_volume(df, pullback_start_idx, pullback_end_idx)
+
+        max_vol_ratio = self.config.get("max_pullback_surge_volume_ratio", 0.75)
+        if max_vol_ratio > 0 and surge_volume > 0:
+            pullback_volume_ratio = pullback_volume / surge_volume
+            if pullback_volume_ratio > max_vol_ratio:
+                return self.not_detected(
+                    f"Pullback volume too heavy: {pullback_volume_ratio:.2f} > {max_vol_ratio} "
+                    f"(pullback avg {pullback_volume:,.0f} vs surge avg {surge_volume:,.0f})"
+                )
+
         volume_declining = pullback_volume < surge_volume
 
         # Step 9: Confirmations (advisory)
@@ -300,7 +315,7 @@ class MicroPullback(PatternDetector):
 
         # Step 10b: Minimum histogram strength threshold
         # Data shows: histogram < 0.01 = 38% WR, histogram > 0.1 = 80% WR
-        min_histogram = self.config.get("min_histogram_threshold", 0.03)
+        min_histogram = self.config.get("min_histogram_threshold", 0.01)
         if min_histogram > 0 and macd is not None and "histogram" in macd.columns:
             current_histogram = macd.iloc[-1]["histogram"]
             if current_histogram < min_histogram:
@@ -356,8 +371,9 @@ class MicroPullback(PatternDetector):
                 "swing_high": swing_high,
                 "swing_high_time": self._bar_time(df, swing_high_idx_relative),
                 "pullback_low": pullback_low,
-                "surge_volume_avg": surge_volume,
-                "pullback_volume_avg": pullback_volume,
+                "surge_volume_avg": round(surge_volume),
+                "pullback_volume_avg": round(pullback_volume),
+                "pullback_volume_ratio": round(pullback_volume / surge_volume, 2) if surge_volume > 0 else 0,
                 "volume_declining": volume_declining,
             },
         )

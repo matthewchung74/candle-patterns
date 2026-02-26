@@ -66,6 +66,11 @@ class BullFlag(PatternDetector):
             # Flag consolidation
             "max_flag_range_pct": 15.0,  # Max range for tight consolidation
 
+            # Volume profile: flag avg volume must be lighter than pole avg volume.
+            # Heavy flag volume = distribution (sellers unloading), not consolidation.
+            # Set to 0 to disable.
+            "max_flag_pole_volume_ratio": 0.75,  # Flag avg vol must be <= 75% of pole avg vol
+
             # Minimum bars needed
             "min_bars_required": 8,
 
@@ -131,13 +136,26 @@ class BullFlag(PatternDetector):
                 f"Pullback too deep: {abs(pullback_pct):.1f}% > {self.config['max_pullback_pct']}%"
             )
 
-        # Step 4: Check volume declining in flag
+        # Step 4: Check volume declining in flag (advisory)
         volume_declining = None
         if self.config["volume_declining"]:
             volume_declining = self._check_volume_declining(df, flag_start_idx, flag_end_idx)
             if not volume_declining:
                 # Advisory warning, not a hard fail
                 pass
+
+        # Step 4b: Volume profile gate — flag must be lighter than pole
+        pole_avg_vol = self._avg_volume(df, pole_start_idx, pole_end_idx)
+        flag_avg_vol = self._avg_volume(df, flag_start_idx, flag_end_idx)
+
+        max_flag_ratio = self.config.get("max_flag_pole_volume_ratio", 0.75)
+        if max_flag_ratio > 0 and pole_avg_vol > 0:
+            flag_volume_ratio = flag_avg_vol / pole_avg_vol
+            if flag_volume_ratio > max_flag_ratio:
+                return self.not_detected(
+                    f"Flag volume too heavy: {flag_volume_ratio:.2f} > {max_flag_ratio} "
+                    f"(flag avg {flag_avg_vol:,.0f} vs pole avg {pole_avg_vol:,.0f})"
+                )
 
         # Step 5: Check for breakout (no lookahead bias)
         # Use PREVIOUS bar's close to confirm breakout (not current bar's high)
@@ -249,6 +267,9 @@ class BullFlag(PatternDetector):
                 "flag_low": flag_low,
                 "volume_declining": volume_declining,
                 "above_9ema": above_9ema,
+                "pole_avg_vol": round(pole_avg_vol),
+                "flag_avg_vol": round(flag_avg_vol),
+                "flag_volume_ratio": round(flag_avg_vol / pole_avg_vol, 2) if pole_avg_vol > 0 else 0,
             },
         )
 
@@ -342,3 +363,4 @@ class BullFlag(PatternDetector):
         second_half_avg = flag_volume[mid:].mean()
 
         return second_half_avg < first_half_avg * 0.9  # 10% decline
+

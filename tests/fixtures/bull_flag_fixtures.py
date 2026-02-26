@@ -428,6 +428,30 @@ BF_FAIL_NO_BREAKOUT = _make_bars([
 ])
 
 
+# -----------------------------------------------------------------------------
+# BF_FAIL_FLAG_VOLUME_TOO_HEAVY: Flag avg volume > 75% of pole avg volume
+# Tests: max_flag_pole_volume_ratio = 0.75
+# Heavy flag volume = distribution, not healthy consolidation
+# -----------------------------------------------------------------------------
+BF_FAIL_FLAG_VOLUME_TOO_HEAVY = _make_bars([
+    # Pre-pole
+    (3.95, 4.02, 3.92, 4.00, 400000),   # bar 0: noise
+
+    # Pole: 20% move, MODERATE volume (avg ~400k)
+    (4.00, 4.22, 4.00, 4.20, 350000),   # bar 1
+    (4.20, 4.42, 4.18, 4.40, 400000),   # bar 2
+    (4.40, 4.62, 4.38, 4.60, 400000),   # bar 3
+    (4.60, 4.82, 4.58, 4.80, 450000),   # bar 4: pole high: 4.82
+
+    # Flag: HEAVY volume (avg 600k = 150% of pole avg 400k, way above 75%)
+    (4.80, 4.55, 4.35, 4.40, 550000),   # bar 5: heavy selling
+    (4.40, 4.50, 4.24, 4.58, 650000),   # bar 6: closes above flag high 4.55
+
+    # Entry bar
+    (4.60, 4.75, 4.55, 4.70, 700000),   # bar 7: opens above flag high
+])
+
+
 # =============================================================================
 # EXPORT ALL FIXTURES
 # =============================================================================
@@ -452,4 +476,5 @@ __all__ = [
     "BF_FAIL_FLAG_TOO_WIDE",
     "BF_FAIL_VOLUME_RISING",
     "BF_FAIL_NO_BREAKOUT",
+    "BF_FAIL_FLAG_VOLUME_TOO_HEAVY",
 ]

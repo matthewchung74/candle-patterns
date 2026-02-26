@@ -68,6 +68,7 @@ def _make_abcd_bars(
             cd_prices.append(c_price + cd_step * (i+1))
 
         # Build the price sequence
+        # Volume profile: AB=high, BC=low, CD=rising
         # Pre-A bars (3 bars - need lookback)
         for i, p in enumerate(pre_a):
             bars.append({
@@ -76,76 +77,76 @@ def _make_abcd_bars(
                 "volume": 100000,
             })
 
-        # A bar (swing low)
+        # A bar (swing low) — impulse start
         bars.append({
             "timestamp": base_time + timedelta(minutes=len(bars)),
             "open": a_bar_high, "high": a_bar_high * 1.001, "low": a_bar_low, "close": a_bar_low * 1.002,
-            "volume": 120000,
+            "volume": 150000,
         })
 
-        # AB move bars
+        # AB move bars — high volume impulse
         for p in ab_prices:
             bars.append({
                 "timestamp": base_time + timedelta(minutes=len(bars)),
                 "open": p * 0.995, "high": p * 1.003, "low": p * 0.994, "close": p,
-                "volume": 100000,
+                "volume": 160000,
             })
 
-        # B bar (swing high)
+        # B bar (swing high) — climax
         bars.append({
             "timestamp": base_time + timedelta(minutes=len(bars)),
             "open": b_bar_low, "high": b_bar_high, "low": b_bar_low * 0.999, "close": b_bar_high * 0.998,
-            "volume": 150000,
+            "volume": 180000,
         })
 
-        # Post-B bars (need lookback bars that are lower)
+        # Post-B bars (need lookback bars that are lower) — low volume pullback
         for i in range(swing_lookback):
             p = b_price * (0.99 - i * 0.005)
             bars.append({
                 "timestamp": base_time + timedelta(minutes=len(bars)),
                 "open": p * 1.002, "high": p * 1.004, "low": p * 0.998, "close": p,
-                "volume": 80000,
+                "volume": 50000,
             })
 
-        # BC move bars (excluding post-B lookback bars already added)
+        # BC move bars (excluding post-B lookback bars already added) — low volume
         for p in bc_prices:
             if p < b_price * 0.98:  # Only add if lower than post-B
                 bars.append({
                     "timestamp": base_time + timedelta(minutes=len(bars)),
                     "open": p * 1.002, "high": p * 1.004, "low": p * 0.998, "close": p,
-                    "volume": 70000,
+                    "volume": 40000,
                 })
 
-        # C bar (swing low)
+        # C bar (swing low) — low volume
         bars.append({
             "timestamp": base_time + timedelta(minutes=len(bars)),
             "open": c_bar_high, "high": c_bar_high * 1.001, "low": c_bar_low, "close": c_bar_low * 1.003,
-            "volume": 90000,
+            "volume": 45000,
         })
 
-        # Post-C bars (need lookback bars that are higher)
+        # Post-C bars (need lookback bars that are higher) — volume picking up
         for i in range(swing_lookback):
             p = c_price * (1.01 + i * 0.005)
             bars.append({
                 "timestamp": base_time + timedelta(minutes=len(bars)),
                 "open": p * 0.998, "high": p * 1.003, "low": p * 0.996, "close": p,
-                "volume": 85000,
+                "volume": 100000,
             })
 
-        # CD move bars
+        # CD move bars — volume rising
         for p in cd_prices:
             bars.append({
                 "timestamp": base_time + timedelta(minutes=len(bars)),
                 "open": p * 0.998, "high": p * 1.002, "low": p * 0.996, "close": p,
-                "volume": 95000,
+                "volume": 120000,
             })
 
-        # Current bar
+        # Current bar — strong volume
         bars.append({
             "timestamp": base_time + timedelta(minutes=len(bars)),
             "open": current_price * 0.998, "high": current_price * 1.002,
             "low": current_price * 0.996, "close": current_price,
-            "volume": 110000,
+            "volume": 130000,
         })
 
     else:
@@ -183,91 +184,93 @@ def _make_abcd_bars(
             cd_prices.append(c_price - cd_step * (i+1))
 
         # Build bars similar to bullish but inverted
+        # Volume profile: AB=high, BC=low, CD=rising
+        # Pre-A candles must be RED (close < open) to confirm selling momentum
         for i, p in enumerate(pre_a):
             bars.append({
                 "timestamp": base_time + timedelta(minutes=len(bars)),
-                "open": p * 0.998, "high": p * 1.004, "low": p * 0.996, "close": p,
+                "open": p * 1.002, "high": p * 1.004, "low": p * 0.996, "close": p * 0.998,
                 "volume": 100000,
             })
 
-        # A bar (swing high)
+        # A bar (swing high) — impulse start
         bars.append({
             "timestamp": base_time + timedelta(minutes=len(bars)),
             "open": a_bar_low, "high": a_bar_high, "low": a_bar_low * 0.999, "close": a_bar_high * 0.998,
-            "volume": 120000,
+            "volume": 150000,
         })
 
-        # Post-A bars (need lookback bars that are lower highs)
+        # Post-A bars (need lookback bars that are lower highs) — high volume selloff
         for i in range(swing_lookback):
             p = a_price * (0.99 - i * 0.005)
             bars.append({
                 "timestamp": base_time + timedelta(minutes=len(bars)),
                 "open": p * 1.002, "high": p * 1.003, "low": p * 0.998, "close": p,
-                "volume": 80000,
+                "volume": 160000,
             })
 
-        # AB move bars
+        # AB move bars — high volume impulse
         for p in ab_prices:
             bars.append({
                 "timestamp": base_time + timedelta(minutes=len(bars)),
                 "open": p * 1.005, "high": p * 1.006, "low": p * 0.997, "close": p,
-                "volume": 100000,
+                "volume": 160000,
             })
 
-        # B bar (swing low)
+        # B bar (swing low) — climax
         bars.append({
             "timestamp": base_time + timedelta(minutes=len(bars)),
             "open": b_bar_high, "high": b_bar_high * 1.001, "low": b_bar_low, "close": b_bar_low * 1.002,
-            "volume": 150000,
+            "volume": 180000,
         })
 
-        # Post-B bars (need lookback bars that are higher lows)
+        # Post-B bars (need lookback bars that are higher lows) — low volume bounce
         for i in range(swing_lookback):
             p = b_price * (1.01 + i * 0.005)
             bars.append({
                 "timestamp": base_time + timedelta(minutes=len(bars)),
                 "open": p * 0.998, "high": p * 1.004, "low": p * 0.997, "close": p,
-                "volume": 80000,
+                "volume": 50000,
             })
 
-        # BC move bars
+        # BC move bars — low volume
         for p in bc_prices:
             bars.append({
                 "timestamp": base_time + timedelta(minutes=len(bars)),
                 "open": p * 0.998, "high": p * 1.004, "low": p * 0.996, "close": p,
-                "volume": 70000,
+                "volume": 40000,
             })
 
-        # C bar (swing high, lower than A)
+        # C bar (swing high, lower than A) — low volume
         bars.append({
             "timestamp": base_time + timedelta(minutes=len(bars)),
             "open": c_bar_low, "high": c_bar_high, "low": c_bar_low * 0.999, "close": c_bar_high * 0.998,
-            "volume": 90000,
+            "volume": 45000,
         })
 
-        # Post-C bars (need lookback bars that are lower highs)
+        # Post-C bars (need lookback bars that are lower highs) — volume picking up
         for i in range(swing_lookback):
             p = c_price * (0.99 - i * 0.005)
             bars.append({
                 "timestamp": base_time + timedelta(minutes=len(bars)),
                 "open": p * 1.002, "high": p * 1.003, "low": p * 0.998, "close": p,
-                "volume": 85000,
+                "volume": 100000,
             })
 
-        # CD move bars
+        # CD move bars — volume rising
         for p in cd_prices:
             bars.append({
                 "timestamp": base_time + timedelta(minutes=len(bars)),
                 "open": p * 1.002, "high": p * 1.004, "low": p * 0.997, "close": p,
-                "volume": 95000,
+                "volume": 120000,
             })
 
-        # Current bar
+        # Current bar — strong volume
         bars.append({
             "timestamp": base_time + timedelta(minutes=len(bars)),
             "open": current_price * 1.002, "high": current_price * 1.004,
             "low": current_price * 0.997, "close": current_price,
-            "volume": 110000,
+            "volume": 130000,
         })
 
     return pd.DataFrame(bars)
