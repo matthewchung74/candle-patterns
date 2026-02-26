@@ -164,11 +164,13 @@ detector = VWAPBreak({
 
 Detects bearish reversal patterns on extended stocks for short entry. Requires the stock to be up 20%+ from open.
 
+All patterns require the HOD to be **fresh** (within last 10 bars) — stale retests of old highs are rejected.
+
 Sub-patterns detected (in priority order):
 1. **Evening Star** - 3-bar pattern: strong green, small doji, red closes below green midpoint
-2. **Volume Climax** - Volume >3x 20-bar avg at HOD with red candle or topping tail
-3. **Shooting Star** - Long upper wick (>2x body), body in lower third, at HOD
-4. **Bearish Engulfing** - Red candle fully engulfs prior green candle at HOD
+2. **Volume Climax** - Volume >3x 20-bar avg at fresh HOD with red candle or topping tail
+3. **Shooting Star** - Long upper wick (>2x body), body in lower third, at fresh HOD
+4. **Bearish Engulfing** - Red candle fully engulfs prior green candle at fresh HOD
 
 ```python
 from candle_patterns import ReversalPatternDetector
@@ -201,6 +203,9 @@ detector = ReversalPatternDetector({
 
     # Evening star
     "max_middle_body_pct": 30.0,          # Middle candle body < 30% of range
+
+    # HOD recency
+    "max_hod_age_bars": 10,               # HOD must be within last 10 bars
 
     # Risk
     "stop_buffer_pct": 2.0,              # Stop 2% above recent HOD

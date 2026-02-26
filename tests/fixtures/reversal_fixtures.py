@@ -262,6 +262,35 @@ REVERSAL_FAIL_VOLUME_CLIMAX_NO_REVERSAL = _make_bars([
 
 
 # =============================================================================
+# STALE HOD FIXTURES
+# =============================================================================
+
+# FAIL: Valid shooting star shape but HOD was 15 bars ago (stale)
+REVERSAL_FAIL_STALE_HOD = _make_bars([
+    # Uptrend to HOD
+    {"open": 1.00, "high": 1.05, "low": 0.99, "close": 1.04, "volume": 8000},
+    {"open": 1.04, "high": 1.10, "low": 1.03, "close": 1.09, "volume": 10000},
+    {"open": 1.09, "high": 1.18, "low": 1.08, "close": 1.17, "volume": 12000},
+    {"open": 1.17, "high": 1.25, "low": 1.16, "close": 1.24, "volume": 15000},
+    # HOD here at bar index 4 (1.40) — will be >10 bars from end
+    {"open": 1.24, "high": 1.40, "low": 1.23, "close": 1.38, "volume": 20000},
+    # Long slow fade
+    {"open": 1.38, "high": 1.39, "low": 1.34, "close": 1.35, "volume": 10000},
+    {"open": 1.35, "high": 1.36, "low": 1.32, "close": 1.33, "volume": 9000},
+    {"open": 1.33, "high": 1.34, "low": 1.30, "close": 1.31, "volume": 8000},
+    {"open": 1.31, "high": 1.32, "low": 1.28, "close": 1.29, "volume": 8000},
+    {"open": 1.29, "high": 1.30, "low": 1.27, "close": 1.28, "volume": 7000},
+    {"open": 1.28, "high": 1.29, "low": 1.26, "close": 1.27, "volume": 7000},
+    {"open": 1.27, "high": 1.29, "low": 1.25, "close": 1.26, "volume": 7000},
+    {"open": 1.26, "high": 1.28, "low": 1.24, "close": 1.25, "volume": 7000},
+    {"open": 1.25, "high": 1.27, "low": 1.24, "close": 1.26, "volume": 7000},
+    {"open": 1.26, "high": 1.28, "low": 1.24, "close": 1.27, "volume": 7000},
+    # Shooting star shape near old HOD retest — but HOD is stale (15 bars ago)
+    {"open": 1.27, "high": 1.38, "low": 1.26, "close": 1.28, "volume": 18000},
+])
+
+
+# =============================================================================
 # EXTENSION REQUIREMENT FIXTURES
 # =============================================================================
 

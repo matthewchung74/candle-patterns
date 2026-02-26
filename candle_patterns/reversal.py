@@ -59,6 +59,9 @@ class ReversalPatternDetector(PatternDetector):
             "max_middle_body_pct": 30.0,       # Middle candle body < 30% of range
             "min_close_below_midpoint": True,  # Final bar closes below bar[-3] midpoint
 
+            # HOD recency: require HOD within last N bars (fresh high rejection)
+            "max_hod_age_bars": 10,            # HOD must be within last 10 bars
+
             # Hard gates
             "require_red_reversal": True,      # Must have red candle at/after top
             "require_volume_confirmation": False,  # Volume climax optional
@@ -210,11 +213,10 @@ class ReversalPatternDetector(PatternDetector):
                 f"Body position {body_position_pct:.0f}% > {self.config['max_body_position_pct']}%"
             )
 
-        # Check if at/near HOD
-        hod = df["high"].max()
-        distance_from_hod_pct = ((hod - high) / hod) * 100 if hod > 0 else 100
-        if distance_from_hod_pct > 3.0:  # Within 3% of HOD
-            return self.not_detected(f"Shooting star not at HOD ({distance_from_hod_pct:.1f}% away)")
+        # Check if HOD is recent and pattern is near it
+        hod_fail, distance_from_hod_pct = self._check_hod_recency(df, high, max_distance_pct=3.0)
+        if hod_fail is not None:
+            return hod_fail
 
         # Calculate entry/stop for short
         entry_price = close  # Enter on close of shooting star
@@ -285,10 +287,10 @@ class ReversalPatternDetector(PatternDetector):
             return self.not_detected("Current bar is not red")
 
         # Current body must engulf prior body
-        curr_body_top = curr["open"]  # Red candle: open > close
-        curr_body_bottom = curr["close"]
-        prev_body_top = prev["close"]  # Green candle: close > open
-        prev_body_bottom = prev["open"]
+        curr_body_top = max(curr["open"], curr["close"])
+        curr_body_bottom = min(curr["open"], curr["close"])
+        prev_body_top = max(prev["open"], prev["close"])
+        prev_body_bottom = min(prev["open"], prev["close"])
 
         # Check engulfing condition
         engulfs_top = curr_body_top >= prev_body_top
@@ -300,11 +302,19 @@ class ReversalPatternDetector(PatternDetector):
                 f"vs prev [{prev_body_bottom:.2f}-{prev_body_top:.2f}]"
             )
 
-        # Check if at/near HOD
-        hod = df["high"].max()
-        distance_from_hod_pct = ((hod - prev["high"]) / hod) * 100 if hod > 0 else 100
-        if distance_from_hod_pct > 5.0:  # Within 5% of HOD
-            return self.not_detected(f"Bearish engulfing not near HOD ({distance_from_hod_pct:.1f}% away)")
+        # Enforce minimum engulf ratio
+        curr_body_size = curr_body_top - curr_body_bottom
+        prev_body_size = prev_body_top - prev_body_bottom
+        engulf_ratio = curr_body_size / prev_body_size if prev_body_size > 0 else 1.0
+        if engulf_ratio < self.config["min_engulf_ratio"]:
+            return self.not_detected(
+                f"Engulf ratio {engulf_ratio:.2f} < {self.config['min_engulf_ratio']}"
+            )
+
+        # Check if HOD is recent and pattern is near it
+        hod_fail, distance_from_hod_pct = self._check_hod_recency(df, prev["high"], max_distance_pct=5.0)
+        if hod_fail is not None:
+            return hod_fail
 
         # Calculate entry/stop
         entry_price = curr["close"]
@@ -313,11 +323,6 @@ class ReversalPatternDetector(PatternDetector):
             return self.not_detected(f"Invalid setup: stop ${stop_price:.2f} <= entry ${entry_price:.2f}")
 
         stop_distance_cents = (stop_price - entry_price) * 100
-
-        # Calculate body sizes for engulf ratio
-        curr_body_size = abs(curr["open"] - curr["close"])
-        prev_body_size = abs(prev["close"] - prev["open"])
-        engulf_ratio = curr_body_size / prev_body_size if prev_body_size > 0 else 1.0
 
         confidence = self._calculate_confidence(
             pattern_weight=self.config["bearish_engulfing_weight"],
@@ -396,12 +401,11 @@ class ReversalPatternDetector(PatternDetector):
                     f"Bar[-1] close {bar3['close']:.2f} above Bar[-3] midpoint {bar1_midpoint:.2f}"
                 )
 
-        # Check if at/near HOD
-        hod = df["high"].max()
+        # Check if HOD is recent and pattern is near it
         pattern_high = max(bar1["high"], bar2["high"], bar3["high"])
-        distance_from_hod_pct = ((hod - pattern_high) / hod) * 100 if hod > 0 else 100
-        if distance_from_hod_pct > 3.0:
-            return self.not_detected(f"Evening star not near HOD ({distance_from_hod_pct:.1f}% away)")
+        hod_fail, distance_from_hod_pct = self._check_hod_recency(df, pattern_high, max_distance_pct=3.0)
+        if hod_fail is not None:
+            return hod_fail
 
         # Calculate entry/stop
         entry_price = bar3["close"]
@@ -494,11 +498,10 @@ class ReversalPatternDetector(PatternDetector):
             if not (is_red or has_topping_tail or next_bar_red):
                 continue  # No reversal confirmation
 
-            # Check if at/near HOD
-            hod = df["high"].max()
-            distance_from_hod_pct = ((hod - bar["high"]) / hod) * 100 if hod > 0 else 100
-            if distance_from_hod_pct > 5.0:
-                continue  # Not at HOD
+            # Check if HOD is recent and pattern is near it
+            hod_fail, distance_from_hod_pct = self._check_hod_recency(df, bar["high"], max_distance_pct=5.0)
+            if hod_fail is not None:
+                continue  # Not at fresh HOD
 
             # Volume climax with reversal found
             entry_price = df.iloc[-1]["close"]  # Enter on current bar's close
@@ -544,6 +547,35 @@ class ReversalPatternDetector(PatternDetector):
         return self.not_detected(
             f"No volume climax (need >{self.config['volume_climax_multiplier']}x avg volume at HOD)"
         )
+
+    def _check_hod_recency(self, df: pd.DataFrame, pattern_high: float, max_distance_pct: float):
+        """
+        Check if HOD is recent (within max_hod_age_bars) and pattern is near it.
+
+        Returns (not_detected_result, None) if check fails.
+        Returns (None, distance_from_hod_pct) if checks pass.
+        """
+        n = len(df)
+        max_age = self.config.get("max_hod_age_bars", 10)
+
+        # Find where HOD occurred
+        hod = df["high"].max()
+        hod_idx = df["high"].idxmax()
+        bars_since_hod = n - 1 - hod_idx
+
+        if bars_since_hod > max_age:
+            return self.not_detected(
+                f"HOD is stale: {bars_since_hod} bars ago > {max_age} max"
+            ), None
+
+        # Check distance from HOD
+        distance_from_hod_pct = ((hod - pattern_high) / hod) * 100 if hod > 0 else 100
+        if distance_from_hod_pct > max_distance_pct:
+            return self.not_detected(
+                f"Pattern not near HOD ({distance_from_hod_pct:.1f}% away > {max_distance_pct}%)"
+            ), None
+
+        return None, distance_from_hod_pct
 
     def _has_topping_tail(self, bar: pd.Series) -> bool:
         """Check if bar has a topping tail (long upper wick, body in lower portion)."""

@@ -32,6 +32,8 @@ from tests.fixtures.reversal_fixtures import (
     REVERSAL_PASS_VOLUME_CLIMAX_TOPPING_TAIL,
     REVERSAL_FAIL_VOLUME_CLIMAX_NOT_HOD,
     REVERSAL_FAIL_VOLUME_CLIMAX_NO_REVERSAL,
+    # Stale HOD
+    REVERSAL_FAIL_STALE_HOD,
     # Extension requirement
     REVERSAL_FAIL_NOT_EXTENDED,
     # Multi-pattern
@@ -173,6 +175,26 @@ class TestReversalPatternDetection:
 
         if result.detected and result.pattern_name == "VolumeClimax":
             pytest.fail("Should not detect volume climax without reversal")
+
+    # =========================================================================
+    # STALE HOD TESTS
+    # =========================================================================
+
+    def test_stale_hod_rejected(self):
+        """Test rejection when HOD occurred more than 10 bars ago."""
+        result = self.detector.detect(REVERSAL_FAIL_STALE_HOD)
+
+        assert result.detected is False
+
+    def test_stale_hod_passes_with_relaxed_config(self):
+        """Test that increasing max_hod_age_bars allows stale HOD."""
+        detector = ReversalPatternDetector({"max_hod_age_bars": 20})
+        result = detector.detect(REVERSAL_FAIL_STALE_HOD)
+
+        # With relaxed config, pattern may detect (if other criteria met)
+        # We just verify it doesn't reject on staleness
+        if not result.detected:
+            assert "stale" not in result.reason.lower()
 
     # =========================================================================
     # EXTENSION REQUIREMENT TESTS

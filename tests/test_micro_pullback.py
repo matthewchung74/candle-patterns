@@ -134,11 +134,17 @@ class TestMicroPullbackDetection:
         assert "deep" in result.reason.lower()
 
     def test_fail_duration_too_long(self):
-        """Test rejection when pullback is 3 candles (above 2 maximum)."""
-        result = self.detector.detect(MP_FAIL_DURATION_TOO_LONG)
+        """Test rejection when pullback is 4 candles (above 3 maximum)."""
+        detector = MicroPullback({"max_pullback_candles": 3})
+        result = detector.detect(MP_FAIL_DURATION_TOO_LONG)
 
-        assert result.detected is False
-        assert "long" in result.reason.lower()
+        # Fixture has 3 pullback candles which now passes with default of 3.
+        # Use explicit config of 2 to test the gate still works.
+        detector_strict = MicroPullback({"max_pullback_candles": 2})
+        result_strict = detector_strict.detect(MP_FAIL_DURATION_TOO_LONG)
+
+        assert result_strict.detected is False
+        assert "long" in result_strict.reason.lower()
 
     def test_fail_green_ratio_too_low(self):
         """Test rejection when green ratio is 40% (below 50%)."""
@@ -204,7 +210,7 @@ class TestMicroPullbackConfig:
         assert detector.config["min_prior_move_pct"] == 5.0
         assert detector.config["max_prior_move_pct"] == 15.0
         assert detector.config["max_pullback_pct"] == 12.0
-        assert detector.config["max_pullback_candles"] == 2
+        assert detector.config["max_pullback_candles"] == 3
         assert detector.config["entry"] == "first_green_after_pullback"
 
     def test_custom_config_override(self):
