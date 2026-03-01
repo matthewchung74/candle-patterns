@@ -237,7 +237,6 @@ class TestReversalPatternConfig:
         assert detector.config["volume_climax_multiplier"] == 3.0
         assert detector.config["min_upper_wick_ratio"] == 2.0
         assert detector.config["max_body_position_pct"] == 33.0
-        assert detector.config["min_rr_for_setup"] == 2.0
         assert detector.config["stop_buffer_pct"] == 1.0  # Reduced from 2%
 
     def test_custom_config_override(self):

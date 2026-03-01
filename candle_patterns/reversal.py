@@ -70,9 +70,6 @@ class ReversalPatternDetector(PatternDetector):
             "stop_buffer_pct": 1.0,            # Stop 1% above HOD
             "stop_buffer_min_cents": 5,        # Minimum 5 cents buffer
 
-            # Quality filter
-            "min_rr_for_setup": 2.0,           # Minimum R:R
-
             # Minimum bars needed
             "min_bars_required": 10,
 
@@ -589,7 +586,12 @@ class ReversalPatternDetector(PatternDetector):
         )
 
     def _calculate_rise(self, df: pd.DataFrame) -> tuple:
-        """Return (rise_amount, run_low, run_high) from last 10 bars."""
+        """Return (rise_amount, run_low, run_high) from last 10 bars.
+
+        Uses the same 10-bar window as _calculate_stop() for consistency.
+        This measures the recent micro-run (not full session), which is more
+        conservative: smaller run → smaller target → harder to pass R:R gate.
+        """
         recent = df.tail(10) if len(df) > 10 else df
         run_low = recent["low"].min()
         run_high = recent["high"].max()
