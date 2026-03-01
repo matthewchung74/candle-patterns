@@ -208,9 +208,8 @@ detector = ReversalPatternDetector({
     "max_hod_age_bars": 10,               # HOD must be within last 10 bars
 
     # Risk
-    "stop_buffer_pct": 2.0,              # Stop 2% above recent HOD
+    "stop_buffer_pct": 1.0,              # Stop 1% above recent HOD
     "stop_buffer_min_cents": 5,
-    "min_rr_for_setup": 2.0,
 })
 ```
 
@@ -352,9 +351,9 @@ Boosts by pattern:
 | Reversal | macd_weakening +0.06 | MACD histogram declining |
 | Volume Climax | volume_bonus +0.05 | Extra confidence for climax signal |
 
-## All Patterns Enforce min_rr_for_setup
+## R:R Enforcement
 
-Every pattern (except ABCD which uses its own formula) requires a minimum risk/reward ratio of 2:1 by default. If the calculated entry/stop doesn't achieve this, the pattern is not returned as detected. This is configurable per-pattern via `min_rr_for_setup`.
+Long patterns (Micro Pullback, Bull Flag, VWAP Break) enforce a minimum 2:1 R:R via `min_rr_for_setup` in their config. ABCD uses its own formula. Reversal (short) patterns compute a 50% retracement target and let the downstream gate enforce the 2:1 minimum on the actual R:R.
 
 ## Stale Data Guard
 
@@ -574,6 +573,7 @@ All detectors return a `PatternResult` with:
 | `confidence` | float | 0.0 to 1.0 confidence score |
 | `entry_price` | float | Suggested entry price |
 | `stop_price` | float | Suggested stop loss price |
+| `target_price` | float | Pattern-derived target (e.g. 50% retracement for reversals) |
 | `stop_distance_cents` | float | Stop distance in cents |
 | `pattern_start_idx` | int | Bar index where pattern starts |
 | `pattern_end_idx` | int | Bar index where pattern ends |
