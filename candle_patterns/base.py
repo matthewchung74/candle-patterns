@@ -49,6 +49,9 @@ class PatternResult:
     # Exit signals (invalidation conditions)
     exit_signals: Optional[List[ExitSignal]] = None
 
+    # Target price (pattern-derived, e.g. retracement target)
+    target_price: Optional[float] = None
+
     # Debug info
     reason: Optional[str] = None
     details: Optional[Dict[str, Any]] = None

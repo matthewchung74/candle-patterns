@@ -238,6 +238,7 @@ class TestReversalPatternConfig:
         assert detector.config["min_upper_wick_ratio"] == 2.0
         assert detector.config["max_body_position_pct"] == 33.0
         assert detector.config["min_rr_for_setup"] == 2.0
+        assert detector.config["stop_buffer_pct"] == 1.0  # Reduced from 2%
 
     def test_custom_config_override(self):
         """Test that custom config overrides defaults."""
@@ -310,6 +311,84 @@ class TestReversalPatternConfidence:
 
         if result.detected and result.pattern_name == "VolumeClimax":
             assert result.volume_confirmation is True
+
+
+class TestReversalRetracementTarget:
+    """Tests for 50% retracement target calculation."""
+
+    def setup_method(self):
+        self.detector = ReversalPatternDetector()
+
+    def test_shooting_star_has_target_price(self):
+        """Shooting star should set target_price."""
+        result = self.detector.detect(REVERSAL_PASS_SHOOTING_STAR)
+        assert result.detected is True
+        assert result.target_price is not None
+
+    def test_bearish_engulfing_has_target_price(self):
+        """Bearish engulfing should set target_price."""
+        result = self.detector.detect(REVERSAL_PASS_BEARISH_ENGULFING)
+        assert result.detected is True
+        assert result.target_price is not None
+
+    def test_evening_star_has_target_price(self):
+        """Evening star should set target_price."""
+        result = self.detector.detect(REVERSAL_PASS_EVENING_STAR)
+        assert result.detected is True
+        assert result.target_price is not None
+
+    def test_volume_climax_has_target_price(self):
+        """Volume climax should set target_price."""
+        result = self.detector.detect(REVERSAL_PASS_VOLUME_CLIMAX)
+        assert result.detected is True
+        assert result.target_price is not None
+
+    def test_target_is_50pct_retracement(self):
+        """Target should be the midpoint of the run (50% retracement)."""
+        result = self.detector.detect(REVERSAL_PASS_SHOOTING_STAR)
+        assert result.detected is True
+
+        run_low = result.details["run_low"]
+        run_high = result.details["run_high"]
+        expected_target = run_high - (run_high - run_low) * 0.50
+
+        assert result.target_price == pytest.approx(expected_target, abs=0.01)
+
+    def test_target_below_entry(self):
+        """For shorts, target should be below entry price."""
+        result = self.detector.detect(REVERSAL_PASS_SHOOTING_STAR)
+        assert result.detected is True
+        assert result.target_price < result.entry_price
+
+    def test_rise_details_present(self):
+        """Rise calculation details should be in details dict."""
+        result = self.detector.detect(REVERSAL_PASS_SHOOTING_STAR)
+        assert result.detected is True
+        assert "rise_amount" in result.details
+        assert "rise_pct" in result.details
+        assert "run_low" in result.details
+        assert "run_high" in result.details
+        assert result.details["rise_amount"] > 0
+        assert result.details["rise_pct"] > 0
+
+
+class TestReversalStopBuffer:
+    """Tests for the 1% stop buffer."""
+
+    def test_stop_buffer_is_1pct(self):
+        """Stop buffer should be 1% of HOD (reduced from 2%)."""
+        detector = ReversalPatternDetector()
+        result = detector.detect(REVERSAL_PASS_SHOOTING_STAR)
+        assert result.detected is True
+
+        # HOD from last 10 bars
+        df = REVERSAL_PASS_SHOOTING_STAR.copy().reset_index(drop=True)
+        recent = df.tail(10) if len(df) > 10 else df
+        hod = recent["high"].max()
+
+        expected_buffer = max(hod * 0.01, 0.05)  # 1% or 5 cents min
+        expected_stop = hod + expected_buffer
+        assert result.stop_price == pytest.approx(expected_stop, abs=0.01)
 
 
 if __name__ == "__main__":

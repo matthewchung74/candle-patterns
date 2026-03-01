@@ -67,7 +67,7 @@ class ReversalPatternDetector(PatternDetector):
             "require_volume_confirmation": False,  # Volume climax optional
 
             # Risk parameters
-            "stop_buffer_pct": 2.0,            # Stop 2% above HOD
+            "stop_buffer_pct": 1.0,            # Stop 1% above HOD
             "stop_buffer_min_cents": 5,        # Minimum 5 cents buffer
 
             # Quality filter
@@ -226,6 +226,11 @@ class ReversalPatternDetector(PatternDetector):
 
         stop_distance_cents = (stop_price - entry_price) * 100
 
+        # Calculate rise and retracement target
+        rise_amount, run_low, run_high = self._calculate_rise(df)
+        target_price = self._calculate_retracement_target(run_low, run_high)
+        rise_pct = self.calculate_move_pct(run_low, run_high)
+
         # Build result
         confidence = self._calculate_confidence(
             pattern_weight=self.config["shooting_star_weight"],
@@ -240,6 +245,7 @@ class ReversalPatternDetector(PatternDetector):
             confidence=confidence,
             entry_price=entry_price,
             stop_price=stop_price,
+            target_price=target_price,
             stop_distance_cents=stop_distance_cents,
             pattern_start_idx=n - 4,
             pattern_end_idx=n - 1,
@@ -253,6 +259,10 @@ class ReversalPatternDetector(PatternDetector):
                 "distance_from_hod_pct": distance_from_hod_pct,
                 "green_bars_prior": green_count,
                 "direction": "short",
+                "rise_amount": rise_amount,
+                "rise_pct": rise_pct,
+                "run_low": run_low,
+                "run_high": run_high,
             },
         )
 
@@ -324,6 +334,11 @@ class ReversalPatternDetector(PatternDetector):
 
         stop_distance_cents = (stop_price - entry_price) * 100
 
+        # Calculate rise and retracement target
+        rise_amount, run_low, run_high = self._calculate_rise(df)
+        target_price = self._calculate_retracement_target(run_low, run_high)
+        rise_pct = self.calculate_move_pct(run_low, run_high)
+
         confidence = self._calculate_confidence(
             pattern_weight=self.config["bearish_engulfing_weight"],
             df=df,
@@ -337,6 +352,7 @@ class ReversalPatternDetector(PatternDetector):
             confidence=confidence,
             entry_price=entry_price,
             stop_price=stop_price,
+            target_price=target_price,
             stop_distance_cents=stop_distance_cents,
             pattern_start_idx=n - 2,
             pattern_end_idx=n - 1,
@@ -348,6 +364,10 @@ class ReversalPatternDetector(PatternDetector):
                 "engulf_ratio": engulf_ratio,
                 "distance_from_hod_pct": distance_from_hod_pct,
                 "direction": "short",
+                "rise_amount": rise_amount,
+                "rise_pct": rise_pct,
+                "run_low": run_low,
+                "run_high": run_high,
             },
         )
 
@@ -415,6 +435,11 @@ class ReversalPatternDetector(PatternDetector):
 
         stop_distance_cents = (stop_price - entry_price) * 100
 
+        # Calculate rise and retracement target
+        rise_amount, run_low, run_high = self._calculate_rise(df)
+        target_price = self._calculate_retracement_target(run_low, run_high)
+        rise_pct = self.calculate_move_pct(run_low, run_high)
+
         confidence = self._calculate_confidence(
             pattern_weight=self.config["evening_star_weight"],
             df=df,
@@ -428,6 +453,7 @@ class ReversalPatternDetector(PatternDetector):
             confidence=confidence,
             entry_price=entry_price,
             stop_price=stop_price,
+            target_price=target_price,
             stop_distance_cents=stop_distance_cents,
             pattern_start_idx=n - 3,
             pattern_end_idx=n - 1,
@@ -440,6 +466,10 @@ class ReversalPatternDetector(PatternDetector):
                 "bar2_body_pct": bar2_body_pct,
                 "distance_from_hod_pct": distance_from_hod_pct,
                 "direction": "short",
+                "rise_amount": rise_amount,
+                "rise_pct": rise_pct,
+                "run_low": run_low,
+                "run_high": run_high,
             },
         )
 
@@ -511,6 +541,11 @@ class ReversalPatternDetector(PatternDetector):
 
             stop_distance_cents = (stop_price - entry_price) * 100
 
+            # Calculate rise and retracement target
+            rise_amount, run_low, run_high = self._calculate_rise(df)
+            target_price = self._calculate_retracement_target(run_low, run_high)
+            rise_pct = self.calculate_move_pct(run_low, run_high)
+
             confidence = self._calculate_confidence(
                 pattern_weight=self.config["volume_climax_weight"],
                 df=df,
@@ -525,6 +560,7 @@ class ReversalPatternDetector(PatternDetector):
                 confidence=confidence,
                 entry_price=entry_price,
                 stop_price=stop_price,
+                target_price=target_price,
                 stop_distance_cents=stop_distance_cents,
                 pattern_start_idx=bar_idx,
                 pattern_end_idx=n - 1,
@@ -541,12 +577,28 @@ class ReversalPatternDetector(PatternDetector):
                     "climax_bar_red": is_red,
                     "has_topping_tail": has_topping_tail,
                     "direction": "short",
+                    "rise_amount": rise_amount,
+                    "rise_pct": rise_pct,
+                    "run_low": run_low,
+                    "run_high": run_high,
                 },
             )
 
         return self.not_detected(
             f"No volume climax (need >{self.config['volume_climax_multiplier']}x avg volume at HOD)"
         )
+
+    def _calculate_rise(self, df: pd.DataFrame) -> tuple:
+        """Return (rise_amount, run_low, run_high) from last 10 bars."""
+        recent = df.tail(10) if len(df) > 10 else df
+        run_low = recent["low"].min()
+        run_high = recent["high"].max()
+        rise_amount = run_high - run_low
+        return rise_amount, run_low, run_high
+
+    def _calculate_retracement_target(self, run_low: float, run_high: float, pct: float = 0.50) -> float:
+        """Target at pct retracement of the rise (default 50% = midpoint)."""
+        return run_high - (run_high - run_low) * pct
 
     def _check_hod_recency(self, df: pd.DataFrame, pattern_high: float, max_distance_pct: float):
         """
