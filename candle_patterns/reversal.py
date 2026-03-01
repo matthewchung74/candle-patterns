@@ -669,7 +669,7 @@ class ReversalPatternDetector(PatternDetector):
 
         if direction == "above":
             # Stop above HOD for shorts
-            stop_buffer_pct = self.config.get("stop_buffer_pct", 2.0)
+            stop_buffer_pct = self.config.get("stop_buffer_pct", 1.0)
             stop_buffer_min_cents = self.config.get("stop_buffer_min_cents", 5)
 
             pct_buffer = hod * (stop_buffer_pct / 100)
