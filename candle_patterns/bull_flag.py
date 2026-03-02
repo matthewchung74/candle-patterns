@@ -54,9 +54,9 @@ class BullFlag(PatternDetector):
             # Entry trigger
             "entry": "break_flag_resistance",
 
-            # Confirmation
-            "price_above_9ema": True,
-            "price_above_vwap": True,
+            # Hard gates (reject pattern if not met)
+            "require_above_vwap": True,   # HARD GATE: Must be above VWAP
+            "require_macd_positive": True, # HARD GATE: MACD histogram must be > 0
 
             # Risk
             "stop_loss": "low_of_flag",
@@ -226,6 +226,14 @@ class BullFlag(PatternDetector):
             # 3-bar MACD slope: compare current MACD line to 3 bars ago
             if "macd" in macd.columns and len(macd) >= 4:
                 macd_slope_up = macd.iloc[-1]["macd"] > macd.iloc[-4]["macd"]
+
+        # Step 8: Hard gates (reject pattern if not met)
+        # Note: Use == False (not 'is False') because numpy.bool != Python bool
+        if self.config.get("require_above_vwap", True) and above_vwap == False:
+            return self.not_detected("HARD GATE: Price below VWAP")
+
+        if self.config.get("require_macd_positive", True) and macd_positive == False:
+            return self.not_detected("HARD GATE: MACD histogram negative")
 
         # Calculate confidence (standardized system)
         # Base: 65%, Cap: 90%, Gate: 80% (enforced in trade_engine)

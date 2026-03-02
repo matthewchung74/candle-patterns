@@ -5,12 +5,10 @@ Candle Patterns - Momentum Pattern Detection
 Detects momentum day trading patterns:
 - Micro Pullback
 - Bull Flag
-- VWAP Break
-- Opening Range Retest
 - ABCD (Harmonic)
 
 Usage:
-    from candle_patterns import MicroPullback, BullFlag, VWAPBreak, ABCD
+    from candle_patterns import MicroPullback, BullFlag, ABCD
 
     detector = MicroPullback()
     result = detector.detect(bars_df, vwap_series)
@@ -22,8 +20,6 @@ Usage:
 from .base import PatternResult, PatternDetector, ExitSignal
 from .micro_pullback import MicroPullback
 from .bull_flag import BullFlag
-from .vwap_break import VWAPBreak
-from .opening_range_retest import OpeningRangeRetest
 from .abcd import ABCD
 from .reversal import ReversalPatternDetector
 
@@ -48,8 +44,6 @@ __all__ = [
     # Pattern detectors
     "MicroPullback",
     "BullFlag",
-    "VWAPBreak",
-    "OpeningRangeRetest",
     "ABCD",
     "ReversalPatternDetector",
 ]

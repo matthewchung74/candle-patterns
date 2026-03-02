@@ -13,8 +13,6 @@ This library detects common momentum day trading patterns:
 **Long patterns:**
 - **Micro Pullback** - Shallow retracement after a strong move
 - **Bull Flag** - Consolidation pattern with declining volume
-- **VWAP Break** - Price breaking above VWAP with volume
-- **Opening Range Retest** - ORB breakout with displacement + retest (disabled by default)
 - **ABCD** - Harmonic pattern with Fibonacci retracements
 
 **Short (reversal) patterns:**
@@ -43,7 +41,7 @@ pip install -e .
 
 ```python
 import pandas as pd
-from candle_patterns import MicroPullback, BullFlag, VWAPBreak, ABCD, ReversalPatternDetector
+from candle_patterns import MicroPullback, BullFlag, ABCD, ReversalPatternDetector
 
 # Your OHLCV data (newest bar last)
 bars = pd.DataFrame({
@@ -116,6 +114,10 @@ Classic continuation pattern: strong pole (15%+ move) followed by tight 1-3 cand
   / <- Pole
 ```
 
+**Hard gates** (pattern rejected if not met):
+- Price must be above VWAP (`require_above_vwap: True`)
+- MACD histogram must be positive (`require_macd_positive: True`)
+
 **Configuration:**
 ```python
 detector = BullFlag({
@@ -127,36 +129,11 @@ detector = BullFlag({
     "min_pullback_pct": 10.0,    # 10-25% retracement of pole
     "max_pullback_pct": 25.0,
     "volume_declining": True,    # Volume must decrease in flag
-    "stop_buffer_cents": 5,      # 5 cents below flag low
+    "require_above_vwap": True,  # HARD GATE: must be above VWAP
+    "require_macd_positive": True, # HARD GATE: MACD histogram > 0
+    "stop_buffer_pct": 0.5,      # 0.5% below flag low
+    "stop_buffer_min_cents": 5,  # Minimum 5 cents buffer
     "min_rr_for_setup": 2.0,     # Minimum 2:1 R:R required
-})
-```
-
-### VWAP Break
-
-Price breaking above VWAP with volume confirmation. The VWAP Hold variant is supported but disabled by default.
-
-```python
-from candle_patterns import VWAPBreak
-
-detector = VWAPBreak()
-result = detector.detect(bars, vwap=vwap_series)
-
-if result.pattern_name == "VWAPHold":
-    print("VWAP acted as support!")
-```
-
-**Configuration:**
-```python
-detector = VWAPBreak({
-    "min_time_below_minutes": 5,     # Min 5 bars below VWAP before break
-    "volume_spike_on_break": 2.0,    # 2x average volume on break bar
-    "close_above_vwap": True,        # Bar must close above VWAP
-    "stop_buffer_cents": 10,         # 10 cents below VWAP
-    "min_rr_for_setup": 2.0,         # Minimum 2:1 R:R required
-    "vwap_hold_variant": {
-        "enabled": False,            # Disabled by default
-    },
 })
 ```
 
@@ -210,26 +187,6 @@ detector = ReversalPatternDetector({
     # Risk
     "stop_buffer_pct": 1.0,              # Stop 1% above recent HOD
     "stop_buffer_min_cents": 5,
-})
-```
-
-### Opening Range Retest (ORB)
-
-Opening Range Retest with displacement and retest entry within the first 90 minutes.
-
-**Important:** This pattern is **disabled by default**. You must pass `{"enabled": True}` to activate it.
-
-```python
-detector = OpeningRangeRetest({
-    "enabled": True,                  # Must enable explicitly
-    "opening_range_minutes": 5,       # 9:30-9:35 ET
-    "setup_window_minutes": 90,       # 9:30-11:00 ET
-    "displacement_or_pct": 0.20,      # % of OR range
-    "retest_zone_or_pct": 0.20,       # % of OR range
-    "fvg_requirement": "preferred",   # "strict", "preferred", or "off"
-    "trend_alignment": True,          # 5-min EMA slope
-    "confirmation_mode": "basic",     # "basic" or "strict" (engulfing/pinbar)
-    "one_shot": True,                 # Only first valid retest
 })
 ```
 
@@ -307,8 +264,6 @@ print(result.macd_slope_up)  # True/False/None (None if < 35 bars)
 
 - **Micro Pullback**: Pullback volume must be < surge volume
 - **Bull Flag**: Volume must decline during flag consolidation (10% leeway)
-- **VWAP Break**: Volume spike (2x avg over all bars) on break
-
 ```python
 print(result.volume_confirmation)  # True if volume confirms pattern
 ```
@@ -318,8 +273,7 @@ print(result.volume_confirmation)  # True if volume confirms pattern
 Confidence is a 0.0-1.0 score returned by each detector. It is advisory only; gating is handled by the consumer.
 
 Standard bases/caps:
-- **Micro Pullback / Bull Flag / VWAP Break / VWAP Hold**: base 0.65, cap 0.90
-- **Opening Range Retest**: base 0.75, cap 0.95
+- **Micro Pullback / Bull Flag**: base 0.65, cap 0.90
 - **ABCD**: formula-based (0.85 adjusted by retracement and CD/AB match), range 0.50-0.95
 - **Reversal patterns**: base from pattern weight (normalized to ~0.65), cap 0.90
 
@@ -337,14 +291,6 @@ Boosts by pattern:
 | Bull Flag | above_9ema +0.06 | Price above 9 EMA |
 | Bull Flag | macd_positive +0.08 | MACD histogram > 0 |
 | Bull Flag | macd_slope_up +0.04 | MACD line rising vs 3 bars ago |
-| VWAP Break | volume_spike +0.10 | Break volume spike |
-| VWAP Break | macd_positive +0.08 | MACD histogram > 0 |
-| VWAP Break | macd_slope_up +0.04 | MACD line rising vs 3 bars ago |
-| VWAP Hold (disabled) | macd_positive +0.08 | MACD histogram > 0 |
-| VWAP Hold (disabled) | macd_slope_up +0.04 | MACD line rising vs 3 bars ago |
-| Opening Range Retest | fvg_found +0.10 | Displacement/FVG present |
-| Opening Range Retest | confirmed +0.05 | Breakout confirmation |
-| Opening Range Retest | trend_alignment +0.05 | 5-min EMA slope aligned |
 | ABCD | ideal_retracement | Higher confidence near 61.8% BC retracement |
 | ABCD | cd_ab_match | Higher confidence when CD ~ AB |
 | Reversal | above_vwap +0.06 | Room to fall to VWAP |
@@ -353,7 +299,7 @@ Boosts by pattern:
 
 ## R:R Enforcement
 
-Long patterns (Micro Pullback, Bull Flag, VWAP Break) enforce a minimum 2:1 R:R via `min_rr_for_setup` in their config. ABCD uses its own formula. Reversal (short) patterns compute a 50% retracement target and let the downstream gate enforce the 2:1 minimum on the actual R:R.
+Long patterns (Micro Pullback, Bull Flag) enforce a minimum 2:1 R:R via `min_rr_for_setup` in their config. ABCD uses its own formula. Reversal (short) patterns compute a 50% retracement target and let the downstream gate enforce the 2:1 minimum on the actual R:R.
 
 ## Stale Data Guard
 
@@ -531,12 +477,7 @@ for signal in signals:
 | `topping_tail` | Long upper wick rejection while in profit | N/A |
 | `bottoming_tail` | N/A | Long lower wick rejection while in profit |
 
-MACD and VWAP exits use configurable confirmation bars (`macd_exit_confirmation_bars`, `vwap_exit_confirmation_bars`) to filter false signals. Default is 1 bar (immediate), but patterns can override (e.g. ORB uses 2 bars for MACD).
-
-**ORB-specific exits** (in addition to the above):
-- `orb_reentry` - Price re-enters the opening range
-- `orb_opposite_break` - Price breaks the opposite side of the OR
-- `window_exit` - Setup window expired
+MACD and VWAP exits use configurable confirmation bars (`macd_exit_confirmation_bars`, `vwap_exit_confirmation_bars`) to filter false signals. Default is 1 bar (immediate).
 
 ## Indicators Module
 

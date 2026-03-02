@@ -21,6 +21,7 @@ Run with: pytest tests/test_bull_flag.py -v
 """
 
 import pytest
+import pandas as pd
 from candle_patterns import BullFlag
 from tests.fixtures.bull_flag_fixtures import (
     # PASS cases
@@ -245,6 +246,91 @@ class TestBullFlagConfig:
         assert custom.config["max_flag_candles"] == 5
         # Other defaults should remain
         assert custom.config["min_flag_candles"] == 1
+
+
+class TestBullFlagHardGates:
+    """Tests for BullFlag VWAP/MACD hard gates (mirrors MicroPullback convention)."""
+
+    def setup_method(self):
+        self.detector = BullFlag()
+
+    def _make_vwap(self, bars, above: bool):
+        """Create a VWAP series where price is above or below VWAP."""
+        n = len(bars)
+        if above:
+            # VWAP well below all closes
+            return pd.Series([1.0] * n)
+        else:
+            # VWAP well above all closes
+            return pd.Series([9999.0] * n)
+
+    def _make_macd(self, bars, positive: bool):
+        """Create a MACD DataFrame with positive or negative histogram."""
+        n = len(bars)
+        hist_val = 0.5 if positive else -0.5
+        macd_val = 1.0 if positive else -1.0
+        return pd.DataFrame({
+            "macd": [macd_val] * n,
+            "signal": [0.0] * n,
+            "histogram": [hist_val] * n,
+        })
+
+    def test_below_vwap_rejected(self):
+        """BullFlag with price below VWAP should be rejected by hard gate."""
+        bars = BF_PASS_VALID
+        vwap = self._make_vwap(bars, above=False)
+        macd = self._make_macd(bars, positive=True)
+        result = self.detector.detect(bars, vwap=vwap, macd=macd)
+
+        assert result.detected is False
+        assert "HARD GATE" in result.reason
+        assert "VWAP" in result.reason
+
+    def test_macd_negative_rejected(self):
+        """BullFlag with MACD negative should be rejected by hard gate."""
+        bars = BF_PASS_VALID
+        vwap = self._make_vwap(bars, above=True)
+        macd = self._make_macd(bars, positive=False)
+        result = self.detector.detect(bars, vwap=vwap, macd=macd)
+
+        assert result.detected is False
+        assert "HARD GATE" in result.reason
+        assert "MACD" in result.reason
+
+    def test_vwap_none_still_detects(self):
+        """BullFlag with VWAP=None should still detect (gate skipped)."""
+        bars = BF_PASS_VALID
+        macd = self._make_macd(bars, positive=True)
+        result = self.detector.detect(bars, vwap=None, macd=macd)
+
+        assert result.detected is True
+
+    def test_macd_none_still_detects(self):
+        """BullFlag with MACD=None (and <35 bars) should still detect (gate skipped)."""
+        # Use a detector that skips auto-MACD calculation
+        # When bars < 35, auto-MACD returns None, so gate is skipped
+        bars = BF_PASS_VALID
+        vwap = self._make_vwap(bars, above=True)
+        # Pass macd=None explicitly; auto-calc needs 35 bars which fixture may not have
+        result = self.detector.detect(bars, vwap=vwap, macd=None)
+
+        # If auto-MACD kicked in (enough bars), it may or may not be positive
+        # The key test is: if macd_positive is None, the gate is skipped
+        if result.macd_positive is None:
+            assert result.detected is True
+
+    def test_gates_can_be_disabled(self):
+        """BullFlag with gates disabled should detect even with bad VWAP/MACD."""
+        detector = BullFlag({
+            "require_above_vwap": False,
+            "require_macd_positive": False,
+        })
+        bars = BF_PASS_VALID
+        vwap = self._make_vwap(bars, above=False)
+        macd = self._make_macd(bars, positive=False)
+        result = detector.detect(bars, vwap=vwap, macd=macd)
+
+        assert result.detected is True
 
 
 if __name__ == "__main__":

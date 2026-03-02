@@ -274,7 +274,7 @@ class PatternDetector(ABC):
             stop_price: Stop loss price
             direction: "long" or "short"
             current_time: Current bar time (for time-based exits)
-            details: Pattern-specific details (e.g., OR levels for ORB)
+            details: Pattern-specific details
             vwap: Optional VWAP series (same length as bars) for VWAP cross exit
 
         Returns:

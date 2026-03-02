@@ -44,15 +44,6 @@ from .bull_flag_fixtures import (
     BF_FAIL_VOLUME_RISING,
     BF_FAIL_NO_BREAKOUT,
 )
-from .vwap_break_fixtures import (
-    VWAP_BREAK_VALID,
-    VWAP_HOLD_VALID,
-    VWAP_BREAK_ALREADY_ABOVE,
-    VWAP_BREAK_LIMIT_BARS_BELOW,
-    VWAP_BREAK_LIMIT_VOLUME_SPIKE,
-    VWAP_BREAK_LIMIT_RR,
-    VWAP_BREAK_LIMIT_CLOSE_ABOVE,
-)
 from .exit_signal_fixtures import (
     # Topping Tail
     TOPPING_TAIL_VALID,
@@ -91,14 +82,6 @@ from .exit_signal_fixtures import (
     MACD_CROSS_LIMIT_EQUALS_THEN_BELOW,
     # NOTE: Bottoming tail/rejection fixtures are not defined; keep exports in sync with available fixtures
 )
-from .opening_range_retest_fixtures import (
-    OPENING_RANGE_RETEST_VALID,
-    OPENING_RANGE_RETEST_NO_RETEST,
-    OPENING_RANGE_RETEST_OUTSIDE_WINDOW,
-    OPENING_RANGE_RETEST_FAKEOUT,
-    OPENING_RANGE_RETEST_CONFIRM_NO_TOUCH,
-)
-
 __all__ = [
     # MicroPullback fixtures - PASS
     "MP_PASS_VALID",
@@ -134,14 +117,6 @@ __all__ = [
     "BF_FAIL_FLAG_TOO_WIDE",
     "BF_FAIL_VOLUME_RISING",
     "BF_FAIL_NO_BREAKOUT",
-    # VWAPBreak fixtures
-    "VWAP_BREAK_VALID",
-    "VWAP_HOLD_VALID",
-    "VWAP_BREAK_ALREADY_ABOVE",
-    "VWAP_BREAK_LIMIT_BARS_BELOW",
-    "VWAP_BREAK_LIMIT_VOLUME_SPIKE",
-    "VWAP_BREAK_LIMIT_RR",
-    "VWAP_BREAK_LIMIT_CLOSE_ABOVE",
     # Exit signal fixtures - Topping Tail
     "TOPPING_TAIL_VALID",
     "TOPPING_TAIL_WICK_TOO_SMALL",
@@ -176,10 +151,4 @@ __all__ = [
     "MACD_CROSS_STAYS_BULLISH",
     "MACD_CROSS_BULLISH_CROSS",
     "MACD_CROSS_LIMIT_EQUALS_THEN_BELOW",
-    # OpeningRangeRetest fixtures
-    "OPENING_RANGE_RETEST_VALID",
-    "OPENING_RANGE_RETEST_NO_RETEST",
-    "OPENING_RANGE_RETEST_OUTSIDE_WINDOW",
-    "OPENING_RANGE_RETEST_FAKEOUT",
-    "OPENING_RANGE_RETEST_CONFIRM_NO_TOUCH",
 ]

@@ -7,27 +7,15 @@ Core pattern tests are in dedicated files:
 - test_bull_flag.py - Bull Flag pattern tests
 
 This file contains:
-- VWAP Break pattern tests
-- Opening Range Retest pattern tests
 - Exit signal tests (topping tail, stop hit, volume decline, jackknife, MACD cross, VWAP cross)
 - PatternResult tests
-- Confidence system tests
 
 Run with: pytest tests/test_patterns.py -v
 """
 
 import pytest
 import pandas as pd
-from candle_patterns import MicroPullback, BullFlag, VWAPBreak, OpeningRangeRetest
-from tests.fixtures.vwap_break_fixtures import (
-    VWAP_BREAK_VALID,
-    VWAP_HOLD_VALID,
-    VWAP_BREAK_ALREADY_ABOVE,
-    VWAP_BREAK_LIMIT_BARS_BELOW,
-    VWAP_BREAK_LIMIT_VOLUME_SPIKE,
-    VWAP_BREAK_LIMIT_RR,
-    VWAP_BREAK_LIMIT_CLOSE_ABOVE,
-)
+from candle_patterns import MicroPullback, BullFlag
 from tests.fixtures.exit_signal_fixtures import (
     # Topping Tail
     TOPPING_TAIL_VALID,
@@ -71,89 +59,6 @@ from tests.fixtures.exit_signal_fixtures import (
     VWAP_CROSS_LIMIT_EQUALS_THEN_BELOW,
     VWAP_CROSS_SHORT_VALID,
 )
-from tests.fixtures.opening_range_retest_fixtures import (
-    OPENING_RANGE_RETEST_VALID,
-    OPENING_RANGE_RETEST_NO_RETEST,
-    OPENING_RANGE_RETEST_OUTSIDE_WINDOW,
-    OPENING_RANGE_RETEST_FAKEOUT,
-)
-
-
-class TestVWAPBreak:
-    """Tests for VWAP Break pattern detection."""
-
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.detector = VWAPBreak()
-
-    def test_valid_break_detected(self):
-        """Test that a valid VWAP break is detected."""
-        bars, vwap = VWAP_BREAK_VALID
-        result = self.detector.detect(bars, vwap=vwap)
-
-        assert result.detected is True
-        assert result.pattern_name == "VWAPBreak"
-        assert result.above_vwap is True
-
-    def test_valid_hold_detected(self):
-        """Test that a valid VWAP hold is detected."""
-        bars, vwap = VWAP_HOLD_VALID
-        result = self.detector.detect(bars, vwap=vwap)
-
-        assert result.detected is True
-        assert result.pattern_name in ["VWAPBreak", "VWAPHold"]
-
-    def test_already_above_rejected(self):
-        """Test that stock already above VWAP is rejected."""
-        bars, vwap = VWAP_BREAK_ALREADY_ABOVE
-        result = self.detector.detect(bars, vwap=vwap)
-
-        assert result.detected is False
-        assert "below" in result.reason.lower()
-
-    def test_vwap_required(self):
-        """Test that VWAP is required."""
-        bars, _ = VWAP_BREAK_VALID
-        result = self.detector.detect(bars, vwap=None)
-
-        assert result.detected is False
-        assert "required" in result.reason.lower()
-
-    # === LIMIT TESTS ===
-
-    def test_limit_bars_below_at_minimum(self):
-        """Test detection with exactly 5 bars below VWAP (minimum)."""
-        bars, vwap = VWAP_BREAK_LIMIT_BARS_BELOW
-        result = self.detector.detect(bars, vwap=vwap)
-
-        assert result.detected is True
-        assert result.details["bars_below_vwap"] == 5
-
-    def test_limit_volume_spike_at_minimum(self):
-        """Test detection with 2.0x volume spike (minimum for confirmation)."""
-        bars, vwap = VWAP_BREAK_LIMIT_VOLUME_SPIKE
-        result = self.detector.detect(bars, vwap=vwap)
-
-        assert result.detected is True
-        # Volume confirmation should be True at 2.0x threshold
-
-    def test_limit_rr_at_minimum(self):
-        """Test detection with exactly 2.0 R:R (minimum)."""
-        bars, vwap = VWAP_BREAK_LIMIT_RR
-        result = self.detector.detect(bars, vwap=vwap)
-
-        assert result.detected is True
-        # R:R should be ~2.0, just passing the minimum
-
-    def test_limit_close_barely_above_vwap(self):
-        """Test detection when close is barely above VWAP."""
-        bars, vwap = VWAP_BREAK_LIMIT_CLOSE_ABOVE
-        result = self.detector.detect(bars, vwap=vwap)
-
-        assert result.detected is True
-        assert result.above_vwap is True
-
-
 class TestPatternResult:
     """Tests for PatternResult dataclass."""
 
@@ -406,83 +311,6 @@ class TestVWAPCrossExit:
         vwap_signals = [s for s in signals if s.signal_type == "vwap_cross"]
         assert len(vwap_signals) == 1
         assert vwap_signals[0].triggered is True
-
-
-class TestOpeningRangeRetest:
-    """Tests for Opening Range Retest pattern detection."""
-
-    def setup_method(self):
-        """Set up test fixtures."""
-        # Enable ORB (disabled by default) and disable optional filters for deterministic fixtures
-        self.detector = OpeningRangeRetest({
-            "enabled": True,
-            "trend_alignment": False,
-            "fakeout_filter": False,
-            "choppy_filter": False,
-            "confirmation_filter": False,
-            "require_clean_breakout_bar": False,
-        })
-
-    def test_valid_orb_retest_detected(self):
-        """Breakout, retest, and bullish confirmation should detect."""
-        result = self.detector.detect(OPENING_RANGE_RETEST_VALID)
-
-        assert result.detected is True
-        assert result.pattern_name == "OpeningRangeRetest"
-        assert result.entry_price is not None
-        assert result.stop_price is not None
-
-    def test_no_retest_rejected(self):
-        """Test that pattern without retest is rejected."""
-        result = self.detector.detect(OPENING_RANGE_RETEST_NO_RETEST)
-
-        assert result.detected is False
-        assert "retest" in result.reason.lower()
-
-    def test_fakeout_rejected(self):
-        """Breakout followed by close back inside range should reset and reject."""
-        result = self.detector.detect(OPENING_RANGE_RETEST_FAKEOUT)
-
-        assert result.detected is False
-
-    def test_outside_window_rejected(self):
-        """Test that bars outside the 90-minute window are rejected."""
-        result = self.detector.detect(OPENING_RANGE_RETEST_OUTSIDE_WINDOW)
-
-        assert result.detected is False
-        assert "window" in result.reason.lower()
-
-    def test_disabled_returns_not_detected(self):
-        """Test that ORB returns not_detected when disabled (default)."""
-        # Create detector with default config (enabled=False)
-        disabled_detector = OpeningRangeRetest()
-        result = disabled_detector.detect(OPENING_RANGE_RETEST_VALID)
-
-        assert result.detected is False
-        assert "disabled" in result.reason.lower()
-
-
-class TestConfidenceSystem:
-    """Tests for the standardized confidence scoring system."""
-
-    def test_vwap_break_base_confidence(self):
-        """Test that VWAPBreak starts at 65% base confidence."""
-        detector = VWAPBreak()
-        bars, vwap = VWAP_BREAK_VALID
-        result = detector.detect(bars, vwap=vwap)
-
-        if result.detected:
-            # Base is 65%, max is 90%
-            assert 0.65 <= result.confidence <= 0.90
-
-    def test_confidence_capped_at_90(self):
-        """Test that confidence is capped at 90%."""
-        detector = VWAPBreak()
-        bars, vwap = VWAP_BREAK_VALID
-        result = detector.detect(bars, vwap=vwap)
-
-        if result.detected:
-            assert result.confidence <= 0.90
 
 
 if __name__ == "__main__":
