@@ -205,9 +205,9 @@ class PatternDetector(ABC):
 
         Returns:
             DataFrame with 'macd', 'signal', 'histogram' columns,
-            or None if insufficient bars (< 35)
+            or None if insufficient bars
         """
-        min_bars = slow + signal  # ~35 bars for stable values
+        min_bars = max(fast, 2)  # EWM seeds from first value; directionally useful early
         if len(closes) < min_bars:
             return None
 

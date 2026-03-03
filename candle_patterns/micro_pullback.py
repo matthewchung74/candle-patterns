@@ -313,10 +313,11 @@ class MicroPullback(PatternDetector):
         if self.config.get("require_macd_positive", True) and macd_positive == False:
             return self.not_detected("HARD GATE: MACD histogram negative")
 
-        # Step 10b: Minimum histogram strength threshold
-        # Data shows: histogram < 0.01 = 38% WR, histogram > 0.1 = 80% WR
-        min_histogram = self.config.get("min_histogram_threshold", 0.01)
-        if min_histogram > 0 and macd is not None and "histogram" in macd.columns:
+        # Step 10b: Minimum histogram strength threshold (price-scaled)
+        # 0.1% of entry price so threshold scales with stock price.
+        # $1 → 0.001, $10 → 0.01 (same as old default), $50 → 0.05
+        min_histogram = max(entry_price * 0.001, 0.001)
+        if macd is not None and "histogram" in macd.columns:
             current_histogram = macd.iloc[-1]["histogram"]
             if current_histogram < min_histogram:
                 return self.not_detected(

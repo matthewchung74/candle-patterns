@@ -48,7 +48,7 @@ class BullFlag(PatternDetector):
             "min_flag_candles": 1,  # Min 1 candle in flag
             "max_flag_candles": 3,  # Max 3 candles (tight flag)
             "min_pullback_pct": 10.0,  # 10-25% retracement of pole
-            "max_pullback_pct": 25.0,
+            "max_pullback_pct": 20.0,
             "volume_declining": True,  # Volume must decrease in flag
 
             # Entry trigger
@@ -69,7 +69,7 @@ class BullFlag(PatternDetector):
             # Volume profile: flag avg volume must be lighter than pole avg volume.
             # Heavy flag volume = distribution (sellers unloading), not consolidation.
             # Set to 0 to disable.
-            "max_flag_pole_volume_ratio": 0.75,  # Flag avg vol must be <= 75% of pole avg vol
+            "max_flag_pole_volume_ratio": 0.60,  # Flag avg vol must be <= 60% of pole avg vol
 
             # Minimum bars needed
             "min_bars_required": 8,
@@ -235,6 +235,16 @@ class BullFlag(PatternDetector):
         if self.config.get("require_macd_positive", True) and macd_positive == False:
             return self.not_detected("HARD GATE: MACD histogram negative")
 
+        # MACD histogram strength threshold (price-scaled, matches MicroPullback)
+        if self.config.get("require_macd_positive", True):
+            min_histogram = max(entry_price * 0.001, 0.001)
+            if macd is not None and "histogram" in macd.columns:
+                current_histogram = macd.iloc[-1]["histogram"]
+                if current_histogram < min_histogram:
+                    return self.not_detected(
+                        f"HARD GATE: MACD histogram {current_histogram:.4f} below threshold {min_histogram}"
+                    )
+
         # Calculate confidence (standardized system)
         # Base: 65%, Cap: 90%, Gate: 80% (enforced in trade_engine)
         confidence = 0.65  # Base confidence
@@ -312,6 +322,12 @@ class BullFlag(PatternDetector):
             # Consolidation should be tight (configurable)
             max_range = self.config.get("max_flag_range_pct", 15.0)
             if flag_range_pct < max_range:
+                # Reject flags with strictly descending highs (downtrend, not consolidation)
+                if len(flag_bars) >= 2:
+                    highs = flag_bars["high"].values
+                    if all(highs[i] < highs[i - 1] for i in range(1, len(highs))):
+                        continue  # Try next flag length
+
                 return (start_idx, end_idx, flag_high, flag_low)
 
         return None

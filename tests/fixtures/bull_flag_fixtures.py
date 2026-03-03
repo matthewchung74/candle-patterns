@@ -181,8 +181,9 @@ BF_PASS_MIN_PULLBACK = _make_bars([
 
 
 # -----------------------------------------------------------------------------
-# BF_PASS_MAX_PULLBACK: Pullback at 24.9% (just below 25% maximum)
-# Tests: max_pullback_pct = 25.0
+# BF_PASS_MAX_PULLBACK: Pullback at ~19.5% (just below 20% maximum)
+# Tests: max_pullback_pct = 20.0
+# Flag highs must not be strictly descending (lower-highs rejection)
 # -----------------------------------------------------------------------------
 BF_PASS_MAX_PULLBACK = _make_bars([
     # Pre-pole
@@ -194,12 +195,13 @@ BF_PASS_MAX_PULLBACK = _make_bars([
     (4.68, 5.08, 4.65, 5.05, 800000),   # bar 3
     (5.05, 5.42, 5.02, 5.40, 900000),   # bar 4: pole high: 5.42, 35.5% from 4.00
 
-    # Flag: 24.5% pullback from 5.42 (flag high: 4.50)
-    (5.40, 4.50, 4.15, 4.25, 400000),   # bar 5: big red
-    (4.25, 4.45, 4.10, 4.52, 300000),   # bar 6: CLOSES above flag high 4.50
+    # Flag: ~19.5% pullback from 5.42 → low = 4.36
+    # Non-descending highs (bar 6 high >= bar 5 high)
+    (5.40, 4.55, 4.38, 4.45, 400000),   # bar 5: (flag high: 4.55)
+    (4.45, 4.58, 4.36, 4.60, 300000),   # bar 6: high=4.58 >= 4.55, CLOSES above flag high
 
     # Breakout: opens above flag high
-    (4.55, 4.75, 4.50, 4.70, 700000),   # bar 7: opens at 4.55 > 4.50
+    (4.62, 4.78, 4.58, 4.72, 700000),   # bar 7: opens at 4.62 > 4.58
 ])
 
 
@@ -332,8 +334,9 @@ BF_FAIL_PULLBACK_SHALLOW = _make_bars([
 
 
 # -----------------------------------------------------------------------------
-# BF_FAIL_PULLBACK_TOO_DEEP: Pullback at 25.5% (above 25% maximum)
-# Tests: max_pullback_pct = 25.0
+# BF_FAIL_PULLBACK_TOO_DEEP: Pullback at ~20.5% (above 20% maximum)
+# Tests: max_pullback_pct = 20.0
+# Flag highs must not be strictly descending (lower-highs rejection)
 # -----------------------------------------------------------------------------
 BF_FAIL_PULLBACK_TOO_DEEP = _make_bars([
     # Pre-pole
@@ -345,12 +348,13 @@ BF_FAIL_PULLBACK_TOO_DEEP = _make_bars([
     (4.65, 5.02, 4.62, 5.00, 800000),   # bar 3
     (5.00, 5.22, 4.98, 5.20, 850000),   # bar 4: pole high: 5.22, 30.5% from 4.00
 
-    # Flag: 25.5% pullback from 5.22 → low = 5.22 * 0.745 = 3.89
-    (5.20, 4.50, 4.00, 4.10, 400000),   # bar 5
-    (4.10, 4.30, 3.88, 4.20, 300000),   # bar 6: (low: 3.88 = 25.7% pullback - too deep)
+    # Flag: ~20.5% pullback from 5.22 → low = 4.15
+    # Non-descending highs so 2-bar flag is found
+    (5.20, 4.60, 4.18, 4.30, 400000),   # bar 5: (flag high: 4.60)
+    (4.30, 4.62, 4.15, 4.65, 300000),   # bar 6: high=4.62 > 4.60 (non-descending)
 
     # Breakout attempt
-    (4.20, 4.60, 4.18, 4.55, 650000),   # bar 7
+    (4.65, 4.80, 4.62, 4.75, 650000),   # bar 7: opens at 4.65 > 4.62
 ])
 
 
@@ -452,6 +456,30 @@ BF_FAIL_FLAG_VOLUME_TOO_HEAVY = _make_bars([
 ])
 
 
+# -----------------------------------------------------------------------------
+# BF_FAIL_LOWER_HIGHS: Flag has strictly descending highs (downtrend, not consolidation)
+# Tests: lower-highs rejection in _find_flag()
+# The 2-bar flag is rejected (descending highs), 1-bar fallback has no breakout
+# -----------------------------------------------------------------------------
+BF_FAIL_LOWER_HIGHS = _make_bars([
+    # Pre-pole
+    (3.95, 4.02, 3.92, 4.00, 400000),   # bar 0
+
+    # Pole: 20% move (4 candles)
+    (4.00, 4.22, 4.00, 4.20, 500000),   # bar 1
+    (4.20, 4.42, 4.18, 4.40, 600000),   # bar 2
+    (4.40, 4.62, 4.38, 4.60, 700000),   # bar 3
+    (4.60, 4.82, 4.58, 4.80, 800000),   # bar 4: pole high: 4.82
+
+    # Flag: 2 candles, strictly descending highs
+    (4.80, 4.60, 4.35, 4.40, 350000),   # bar 5: high=4.60
+    (4.40, 4.50, 4.24, 4.45, 250000),   # bar 6: high=4.50 < 4.60 (descending)
+
+    # No breakout above 1-bar flag high (4.50)
+    (4.45, 4.48, 4.40, 4.46, 700000),   # bar 7: high=4.48 < 4.50
+])
+
+
 # =============================================================================
 # EXPORT ALL FIXTURES
 # =============================================================================
@@ -477,4 +505,5 @@ __all__ = [
     "BF_FAIL_VOLUME_RISING",
     "BF_FAIL_NO_BREAKOUT",
     "BF_FAIL_FLAG_VOLUME_TOO_HEAVY",
+    "BF_FAIL_LOWER_HIGHS",
 ]

@@ -11,11 +11,14 @@ Rules tested:
 - min_flag_candles: 1
 - max_flag_candles: 3
 - min_pullback_pct: 10.0%
-- max_pullback_pct: 25.0%
+- max_pullback_pct: 20.0%
 - max_flag_range_pct: 15.0%
+- max_flag_pole_volume_ratio: 0.60
 - volume_declining: True
 - Breakout above flag high required
 - min_rr_for_setup: 2.0
+- Lower-highs rejection (flag shape quality)
+- MACD histogram strength threshold (price-scaled)
 
 Run with: pytest tests/test_bull_flag.py -v
 """
@@ -43,6 +46,7 @@ from tests.fixtures.bull_flag_fixtures import (
     BF_FAIL_VOLUME_RISING,
     BF_FAIL_NO_BREAKOUT,
     BF_FAIL_FLAG_VOLUME_TOO_HEAVY,
+    BF_FAIL_LOWER_HIGHS,
 )
 
 
@@ -67,7 +71,7 @@ class TestBullFlagDetection:
         assert result.stop_price is not None
         # Verify details
         assert result.details["pole_move_pct"] >= 15.0
-        assert 10.0 <= result.details["pullback_pct"] <= 25.0
+        assert 10.0 <= result.details["pullback_pct"] <= 20.0
         assert result.details["flag_candles"] <= 3
 
     def test_pass_min_pole_move_boundary(self):
@@ -108,11 +112,11 @@ class TestBullFlagDetection:
         assert result.details["pullback_pct"] >= 10.0
 
     def test_pass_max_pullback_boundary(self):
-        """Test detection with pullback at 24.9% (just below 25% maximum)."""
+        """Test detection with pullback at ~19.5% (just below 20% maximum)."""
         result = self.detector.detect(BF_PASS_MAX_PULLBACK)
 
         assert result.detected is True
-        assert result.details["pullback_pct"] <= 25.0
+        assert result.details["pullback_pct"] <= 20.0
 
     def test_pass_min_rr_boundary(self):
         """Test detection with R:R just above 2.0 minimum."""
@@ -154,7 +158,7 @@ class TestBullFlagDetection:
         assert "shallow" in result.reason.lower()
 
     def test_fail_pullback_too_deep(self):
-        """Test rejection when pullback is 25.1% (above 25% maximum)."""
+        """Test rejection when pullback is ~20.5% (above 20% maximum)."""
         result = self.detector.detect(BF_FAIL_PULLBACK_TOO_DEEP)
 
         assert result.detected is False
@@ -193,7 +197,7 @@ class TestBullFlagVolumeProfile:
         self.detector = BullFlag()
 
     def test_flag_rejected_when_flag_volume_too_heavy(self):
-        """Test rejection when flag avg volume > 75% of pole avg volume."""
+        """Test rejection when flag avg volume > 60% of pole avg volume."""
         result = self.detector.detect(BF_FAIL_FLAG_VOLUME_TOO_HEAVY)
 
         assert result.detected is False
@@ -216,7 +220,7 @@ class TestBullFlagVolumeProfile:
         assert "flag_avg_vol" in result.details
         assert "flag_volume_ratio" in result.details
         # Valid fixture should have flag volume well below pole
-        assert result.details["flag_volume_ratio"] < 0.75
+        assert result.details["flag_volume_ratio"] < 0.60
 
 
 class TestBullFlagConfig:
@@ -232,7 +236,7 @@ class TestBullFlagConfig:
         assert detector.config["min_flag_candles"] == 1
         assert detector.config["max_flag_candles"] == 3
         assert detector.config["min_pullback_pct"] == 10.0
-        assert detector.config["max_pullback_pct"] == 25.0
+        assert detector.config["max_pullback_pct"] == 20.0
         assert detector.config["volume_declining"] is True
 
     def test_custom_config_override(self):
@@ -306,9 +310,9 @@ class TestBullFlagHardGates:
         assert result.detected is True
 
     def test_macd_none_still_detects(self):
-        """BullFlag with MACD=None (and <35 bars) should still detect (gate skipped)."""
+        """BullFlag with MACD=None (and insufficient bars) should still detect (gate skipped)."""
         # Use a detector that skips auto-MACD calculation
-        # When bars < 35, auto-MACD returns None, so gate is skipped
+        # When bars < min_bars, auto-MACD returns None, so gate is skipped
         bars = BF_PASS_VALID
         vwap = self._make_vwap(bars, above=True)
         # Pass macd=None explicitly; auto-calc needs 35 bars which fixture may not have
@@ -329,6 +333,63 @@ class TestBullFlagHardGates:
         vwap = self._make_vwap(bars, above=False)
         macd = self._make_macd(bars, positive=False)
         result = detector.detect(bars, vwap=vwap, macd=macd)
+
+        assert result.detected is True
+
+
+class TestBullFlagLowerHighs:
+    """Tests for BullFlag flag shape quality (lower-highs rejection)."""
+
+    def setup_method(self):
+        self.detector = BullFlag()
+
+    def test_fail_flag_lower_highs(self):
+        """Flag with strictly descending highs is rejected (downtrend, not consolidation).
+
+        The 2-bar flag is rejected due to descending highs. The 1-bar fallback
+        also fails because there's no breakout above the smaller flag high.
+        """
+        result = self.detector.detect(BF_FAIL_LOWER_HIGHS)
+
+        assert result.detected is False
+
+
+class TestBullFlagMACDThreshold:
+    """Tests for BullFlag MACD histogram strength threshold."""
+
+    def setup_method(self):
+        self.detector = BullFlag()
+
+    def _make_weak_macd(self, bars, histogram_val: float):
+        """Create a MACD DataFrame with a specific histogram value."""
+        n = len(bars)
+        return pd.DataFrame({
+            "macd": [histogram_val] * n,
+            "signal": [0.0] * n,
+            "histogram": [histogram_val] * n,
+        })
+
+    def test_weak_positive_macd_rejected(self):
+        """BullFlag with weak positive MACD histogram should be rejected.
+
+        histogram=0.001 is positive (passes > 0 check) but below the
+        price-scaled threshold (entry ~4.5 * 0.001 = 0.0045).
+        """
+        bars = BF_PASS_VALID
+        vwap = pd.Series([1.0] * len(bars))  # well below price
+        macd = self._make_weak_macd(bars, 0.001)
+        result = self.detector.detect(bars, vwap=vwap, macd=macd)
+
+        assert result.detected is False
+        assert "HARD GATE" in result.reason
+        assert "threshold" in result.reason
+
+    def test_strong_positive_macd_accepted(self):
+        """BullFlag with strong positive MACD histogram should pass threshold."""
+        bars = BF_PASS_VALID
+        vwap = pd.Series([1.0] * len(bars))  # well below price
+        macd = self._make_weak_macd(bars, 0.5)
+        result = self.detector.detect(bars, vwap=vwap, macd=macd)
 
         assert result.detected is True
 
