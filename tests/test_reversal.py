@@ -318,32 +318,36 @@ class TestReversalRetracementTarget:
     def setup_method(self):
         self.detector = ReversalPatternDetector()
 
-    def test_shooting_star_has_target_price(self):
-        """Shooting star should set target_price."""
+    def test_shooting_star_target_in_details(self):
+        """Shooting star should have retracement_target in details (target_price=None for bracket_rr)."""
         result = self.detector.detect(REVERSAL_PASS_SHOOTING_STAR)
         assert result.detected is True
-        assert result.target_price is not None
+        assert result.target_price is None
+        assert result.details["retracement_target"] is not None
 
-    def test_bearish_engulfing_has_target_price(self):
-        """Bearish engulfing should set target_price."""
+    def test_bearish_engulfing_target_in_details(self):
+        """Bearish engulfing should have retracement_target in details."""
         result = self.detector.detect(REVERSAL_PASS_BEARISH_ENGULFING)
         assert result.detected is True
-        assert result.target_price is not None
+        assert result.target_price is None
+        assert result.details["retracement_target"] is not None
 
-    def test_evening_star_has_target_price(self):
-        """Evening star should set target_price."""
+    def test_evening_star_target_in_details(self):
+        """Evening star should have retracement_target in details."""
         result = self.detector.detect(REVERSAL_PASS_EVENING_STAR)
         assert result.detected is True
-        assert result.target_price is not None
+        assert result.target_price is None
+        assert result.details["retracement_target"] is not None
 
-    def test_volume_climax_has_target_price(self):
-        """Volume climax should set target_price."""
+    def test_volume_climax_target_in_details(self):
+        """Volume climax should have retracement_target in details."""
         result = self.detector.detect(REVERSAL_PASS_VOLUME_CLIMAX)
         assert result.detected is True
-        assert result.target_price is not None
+        assert result.target_price is None
+        assert result.details["retracement_target"] is not None
 
-    def test_target_is_50pct_retracement(self):
-        """Target should be the midpoint of the run (50% retracement)."""
+    def test_retracement_target_is_50pct(self):
+        """Retracement target should be the midpoint of the run (50% retracement)."""
         result = self.detector.detect(REVERSAL_PASS_SHOOTING_STAR)
         assert result.detected is True
 
@@ -351,13 +355,13 @@ class TestReversalRetracementTarget:
         run_high = result.details["run_high"]
         expected_target = run_high - (run_high - run_low) * 0.50
 
-        assert result.target_price == pytest.approx(expected_target, abs=0.01)
+        assert result.details["retracement_target"] == pytest.approx(expected_target, abs=0.01)
 
-    def test_target_below_entry(self):
-        """For shorts, target should be below entry price."""
+    def test_retracement_target_below_entry(self):
+        """For shorts, retracement target should be below entry price."""
         result = self.detector.detect(REVERSAL_PASS_SHOOTING_STAR)
         assert result.detected is True
-        assert result.target_price < result.entry_price
+        assert result.details["retracement_target"] < result.entry_price
 
     def test_rise_details_present(self):
         """Rise calculation details should be in details dict."""

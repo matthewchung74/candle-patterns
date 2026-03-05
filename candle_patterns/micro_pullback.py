@@ -27,6 +27,7 @@ Example:
 from typing import Optional, Dict, Any
 import pandas as pd
 from .base import PatternDetector, PatternResult
+from .indicators.atr import get_current_atr
 
 
 class MicroPullback(PatternDetector):
@@ -60,10 +61,12 @@ class MicroPullback(PatternDetector):
             "require_above_vwap": True,   # HARD GATE: Must be above VWAP
             "require_macd_positive": True, # HARD GATE: MACD histogram must be > 0
 
-            # Risk - percent-based stop buffer with minimum floor
-            # Stop = pullback_low - max(stop_buffer_pct% of price, stop_buffer_min_cents)
+            # Risk - percent-based stop buffer with ATR floor
+            # Stop = pullback_low - max(stop_buffer_pct% of price, stop_buffer_min_cents, ATR * multiplier)
             "stop_buffer_pct": 1.0,  # 1% below pullback low
             "stop_buffer_min_cents": 3,  # Minimum 3 cents buffer
+            "stop_buffer_atr_multiplier": 1.5,  # ATR(14) × 1.5 floor (adapts to volatility)
+            "stop_buffer_atr_period": 14,  # ATR lookback period
 
             # Minimum bars needed
             "min_bars_required": 6,
@@ -73,8 +76,9 @@ class MicroPullback(PatternDetector):
             # Set to 0 to disable.
             "max_pullback_surge_volume_ratio": 0.75,
 
-            # Quality filter
-            "min_rr_for_setup": 2.0,
+            # Quality filter (lowered from 2.0: with 3% stop floor, 5-6% micro-surges
+            # on $10+ stocks produce estimated R:R ~1.5. Gate's bracket R:R is the real check.)
+            "min_rr_for_setup": 1.2,
         }
 
     def detect(
@@ -184,6 +188,10 @@ class MicroPullback(PatternDetector):
                 f"No valid surge found (need {self.config['min_prior_move_pct']}%+ move with >50% green candles)"
             )
 
+        # Reject if any halt bar within pattern range (surge → entry)
+        if self._has_halt_bar(df, surge_start_idx, n - 1):
+            return self.not_detected("Halt bar within pattern")
+
         # Step 3: Calculate actual surge metrics (pullback already calculated above)
         surge_window = df.iloc[surge_start_idx:surge_end_idx + 1]
         surge_low = surge_window["low"].min()
@@ -207,13 +215,20 @@ class MicroPullback(PatternDetector):
             )
 
         # Step 4: Calculate stop price first (needed for entry validation)
-        # Percent-based stop buffer with minimum floor
+        # Percent-based stop buffer with ATR floor
         stop_buffer_pct = self.config.get("stop_buffer_pct", 1.0)
         stop_buffer_min_cents = self.config.get("stop_buffer_min_cents", 3)
+        atr_multiplier = self.config.get("stop_buffer_atr_multiplier", 1.5)
+        atr_period = self.config.get("stop_buffer_atr_period", 14)
 
         pct_buffer = pullback_low * (stop_buffer_pct / 100)
-        min_buffer = stop_buffer_min_cents / 100
-        stop_buffer = max(pct_buffer, min_buffer)
+        min_buffer_cents = stop_buffer_min_cents / 100
+
+        # ATR-based floor: adapts to actual volatility
+        atr_value = get_current_atr(df, period=atr_period)
+        atr_buffer = (atr_value * atr_multiplier) if atr_value is not None else 0.0
+
+        stop_buffer = max(pct_buffer, min_buffer_cents, atr_buffer)
 
         stop_price = pullback_low - stop_buffer
 
@@ -267,7 +282,7 @@ class MicroPullback(PatternDetector):
         estimated_target = entry_price + (prior_move_pct / 100 * entry_price)
         risk = entry_price - stop_price
         estimated_rr = (estimated_target - entry_price) / risk
-        min_rr = self.config.get("min_rr_for_setup", 2.0)
+        min_rr = self.config.get("min_rr_for_setup", 1.2)
         if estimated_rr < min_rr:
             return self.not_detected(
                 f"R:R too low: {estimated_rr:.1f} < {min_rr}"
@@ -376,5 +391,7 @@ class MicroPullback(PatternDetector):
                 "pullback_volume_avg": round(pullback_volume),
                 "pullback_volume_ratio": round(pullback_volume / surge_volume, 2) if surge_volume > 0 else 0,
                 "volume_declining": volume_declining,
+                "atr": round(atr_value, 4) if atr_value is not None else None,
+                "stop_buffer": round(stop_buffer, 4),
             },
         )

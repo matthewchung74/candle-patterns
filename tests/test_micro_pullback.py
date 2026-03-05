@@ -8,10 +8,11 @@ Rules tested:
 - min_prior_move_pct: 5.0%
 - max_prior_move_pct: 15.0%
 - max_pullback_pct: 12.0%
-- max_pullback_candles: 2
+- max_pullback_candles: 3
 - >50% green candles in surge
 - Entry candle must be green
-- min_rr_for_setup: 2.0
+- min_rr_for_setup: 1.5
+- stop_buffer_atr_multiplier: 1.5 (ATR-based floor)
 
 Run with: pytest tests/test_micro_pullback.py -v
 """
@@ -19,6 +20,7 @@ Run with: pytest tests/test_micro_pullback.py -v
 import pytest
 from candle_patterns import MicroPullback
 from tests.fixtures.micro_pullback_fixtures import (
+    _make_bars,
     # PASS cases
     MP_PASS_VALID,
     MP_PASS_MIN_PRIOR_MOVE,
@@ -65,12 +67,12 @@ class TestMicroPullbackDetection:
         assert result.details["pullback_candles"] <= 2
 
     def test_pass_min_prior_move_boundary(self):
-        """Test detection with prior move at 5.1% (just above 5% minimum)."""
+        """Test detection with prior move near minimum (7.2% — effective min with 3% stop floor)."""
         result = self.detector.detect(MP_PASS_MIN_PRIOR_MOVE)
 
         assert result.detected is True
         assert result.details["prior_move_pct"] >= 5.0
-        assert result.details["prior_move_pct"] < 6.0  # Close to minimum
+        assert result.details["prior_move_pct"] < 8.0  # Near effective minimum
 
     def test_pass_max_prior_move_boundary(self):
         """Test detection with prior move at 14.9% (just below 15% maximum)."""
@@ -200,6 +202,69 @@ class TestMicroPullbackVolumeProfile:
         assert result.details["pullback_volume_ratio"] < 0.75
 
 
+class TestMicroPullbackStopBufferATR:
+    """Tests for ATR-based stop buffer floor."""
+
+    def test_atr_buffer_used_on_volatile_stock(self):
+        """ATR × 1.5 should widen stop when volatility is high.
+
+        With enough bars and volatility, ATR buffer should exceed
+        the 1% pct_buffer and 3-cent min.
+        """
+        detector = MicroPullback({
+            "require_above_vwap": False,
+            "require_macd_positive": False,
+            "max_pullback_surge_volume_ratio": 0,
+        })
+
+        # Build 20 bars with volatile price action to get a meaningful ATR,
+        # ending with a valid micro pullback pattern
+        bars = _make_bars([
+            # 14 bars of volatile pre-action to warm up ATR
+            (1.40, 1.48, 1.38, 1.45, 5000),
+            (1.45, 1.50, 1.40, 1.42, 5000),
+            (1.42, 1.52, 1.40, 1.50, 5000),
+            (1.50, 1.55, 1.44, 1.46, 5000),
+            (1.46, 1.54, 1.43, 1.52, 5000),
+            (1.52, 1.58, 1.48, 1.50, 5000),
+            (1.50, 1.56, 1.45, 1.53, 5000),
+            (1.53, 1.60, 1.49, 1.51, 5000),
+            (1.51, 1.57, 1.47, 1.55, 5000),
+            (1.55, 1.62, 1.50, 1.52, 5000),
+            (1.52, 1.58, 1.48, 1.56, 5000),
+            (1.56, 1.63, 1.52, 1.54, 5000),
+            (1.54, 1.60, 1.50, 1.58, 5000),
+            (1.58, 1.63, 1.55, 1.57, 5000),
+            # Surge: 2 strong green candles
+            (1.57, 1.68, 1.56, 1.67, 8000),  # surge green
+            (1.67, 1.78, 1.66, 1.76, 9000),  # surge green (swing high)
+            # Pullback
+            (1.76, 1.77, 1.73, 1.74, 3000),  # pullback (low=1.73)
+            # Entry
+            (1.74, 1.79, 1.73, 1.78, 4000),  # entry green candle
+        ])
+
+        result = detector.detect(bars)
+
+        if result.detected:
+            assert result.details["atr"] is not None
+            assert result.details["stop_buffer"] > 0
+            # ATR buffer should be meaningful (> 3 cents)
+            expected_atr_buffer = result.details["atr"] * 1.5
+            assert result.details["stop_buffer"] >= expected_atr_buffer - 0.001
+
+    def test_atr_multiplier_configurable(self):
+        """Custom stop_buffer_atr_multiplier should override default."""
+        detector = MicroPullback({"stop_buffer_atr_multiplier": 2.0})
+        assert detector.config["stop_buffer_atr_multiplier"] == 2.0
+
+    def test_default_atr_config(self):
+        """Default ATR config values."""
+        detector = MicroPullback()
+        assert detector.config["stop_buffer_atr_multiplier"] == 1.5
+        assert detector.config["stop_buffer_atr_period"] == 14
+
+
 class TestMicroPullbackConfig:
     """Tests for Micro Pullback configuration."""
 
@@ -212,6 +277,7 @@ class TestMicroPullbackConfig:
         assert detector.config["max_pullback_pct"] == 12.0
         assert detector.config["max_pullback_candles"] == 3
         assert detector.config["entry"] == "first_green_after_pullback"
+        assert detector.config["stop_buffer_atr_multiplier"] == 1.5
 
     def test_custom_config_override(self):
         """Test that custom config overrides defaults."""

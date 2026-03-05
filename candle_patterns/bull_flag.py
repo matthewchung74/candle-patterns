@@ -122,6 +122,10 @@ class BullFlag(PatternDetector):
 
         pole_start_idx, pole_end_idx, pole_move_pct = pole_result
 
+        # Reject if any halt bar within pattern range (pole → breakout)
+        if self._has_halt_bar(df, pole_start_idx, n - 1):
+            return self.not_detected("Halt bar within pattern")
+
         # Step 3: Calculate pullback percentage
         pole_high = df.iloc[pole_start_idx:pole_end_idx + 1]["high"].max()
         pullback_pct = self.calculate_move_pct(pole_high, flag_low)

@@ -97,7 +97,9 @@ detector = MicroPullback({
     "require_macd_positive": True,    # HARD GATE: MACD histogram > 0
     "stop_buffer_pct": 1.0,           # 1% below pullback low
     "stop_buffer_min_cents": 3,       # Minimum 3 cents buffer
-    "min_rr_for_setup": 2.0,          # Minimum 2:1 R:R required
+    "stop_buffer_atr_multiplier": 1.5, # ATR(14) × 1.5 floor (adapts to volatility)
+    "stop_buffer_atr_period": 14,     # ATR lookback period
+    "min_rr_for_setup": 1.5,          # Minimum 1.5:1 R:R required
 })
 ```
 

@@ -242,7 +242,7 @@ class ReversalPatternDetector(PatternDetector):
             confidence=confidence,
             entry_price=entry_price,
             stop_price=stop_price,
-            target_price=target_price,
+            target_price=None,
             stop_distance_cents=stop_distance_cents,
             pattern_start_idx=n - 4,
             pattern_end_idx=n - 1,
@@ -260,6 +260,7 @@ class ReversalPatternDetector(PatternDetector):
                 "rise_pct": rise_pct,
                 "run_low": run_low,
                 "run_high": run_high,
+                "retracement_target": target_price,
             },
         )
 
@@ -349,7 +350,7 @@ class ReversalPatternDetector(PatternDetector):
             confidence=confidence,
             entry_price=entry_price,
             stop_price=stop_price,
-            target_price=target_price,
+            target_price=None,
             stop_distance_cents=stop_distance_cents,
             pattern_start_idx=n - 2,
             pattern_end_idx=n - 1,
@@ -365,6 +366,7 @@ class ReversalPatternDetector(PatternDetector):
                 "rise_pct": rise_pct,
                 "run_low": run_low,
                 "run_high": run_high,
+                "retracement_target": target_price,
             },
         )
 
@@ -450,7 +452,7 @@ class ReversalPatternDetector(PatternDetector):
             confidence=confidence,
             entry_price=entry_price,
             stop_price=stop_price,
-            target_price=target_price,
+            target_price=None,
             stop_distance_cents=stop_distance_cents,
             pattern_start_idx=n - 3,
             pattern_end_idx=n - 1,
@@ -467,6 +469,7 @@ class ReversalPatternDetector(PatternDetector):
                 "rise_pct": rise_pct,
                 "run_low": run_low,
                 "run_high": run_high,
+                "retracement_target": target_price,
             },
         )
 
@@ -557,7 +560,7 @@ class ReversalPatternDetector(PatternDetector):
                 confidence=confidence,
                 entry_price=entry_price,
                 stop_price=stop_price,
-                target_price=target_price,
+                target_price=None,
                 stop_distance_cents=stop_distance_cents,
                 pattern_start_idx=bar_idx,
                 pattern_end_idx=n - 1,
@@ -578,6 +581,7 @@ class ReversalPatternDetector(PatternDetector):
                     "rise_pct": rise_pct,
                     "run_low": run_low,
                     "run_high": run_high,
+                    "retracement_target": target_price,
                 },
             )
 

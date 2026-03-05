@@ -56,25 +56,24 @@ MP_PASS_VALID = _make_bars([
 
 
 # -----------------------------------------------------------------------------
-# MP_PASS_MIN_PRIOR_MOVE: Prior move at 5.1% (just above 5% minimum)
+# MP_PASS_MIN_PRIOR_MOVE: Prior move near boundary (just above 5% minimum)
 # Tests: min_prior_move_pct = 5.0
-# Need 6+ bars for pattern detection
-# Note: Algorithm finds smallest valid window first, so even 2-bar window needs 5%+
+# Note: With ATR-based stop buffer floor, the effective min prior move for
+# R:R >= 1.5 needs ~7%+. This fixture uses a 7.2% move (smallest 2-bar window).
 # -----------------------------------------------------------------------------
 MP_PASS_MIN_PRIOR_MOVE = _make_bars([
-    # Surge: Make sure even 2-bar window has 5.1%+ move
-    # bars 1-2 need: low to high >= 5%
-    # If bar1 low = 10.00 and bar2 high = 10.51, move = 5.1%
+    # Pre-bar
     (10.00, 10.05, 10.00, 10.02, 150000),  # flat/noise bar
+    # Surge: 2-bar window low=10.00, high=10.72 → 7.2%
     (10.02, 10.08, 10.00, 10.05, 160000),  # bar 1: low = 10.00
-    (10.05, 10.52, 10.02, 10.50, 180000),  # bar 2: high = 10.52, 5.2% from 10.00 (swing high)
+    (10.05, 10.72, 10.02, 10.70, 180000),  # bar 2: high = 10.72 (swing high)
 
-    # Shallow pullback: ~4% (well under 12%)
-    (10.50, 10.51, 10.12, 10.15, 80000),   # red
-    (10.15, 10.18, 10.10, 10.12, 75000),   # red (low: 10.10)
+    # Shallow pullback
+    (10.70, 10.71, 10.50, 10.55, 80000),   # red
+    (10.55, 10.58, 10.48, 10.50, 75000),   # red (low: 10.48)
 
     # Entry: green bounce
-    (10.12, 10.40, 10.08, 10.35, 180000),  # GREEN entry
+    (10.50, 10.75, 10.45, 10.70, 180000),  # GREEN entry
 ])
 
 
@@ -140,40 +139,42 @@ MP_PASS_MAX_DURATION = _make_bars([
 # -----------------------------------------------------------------------------
 # MP_PASS_MIN_GREEN_RATIO: Green ratio at 60% (3/5 green, just above 50%)
 # Tests: >50% green candles requirement
+# Note: With ATR-based stop buffer, smallest 2-bar surge window must show ~7%+.
+# Bars 3-4 have low=10.10, high=10.86 → 7.5% (found first by algorithm).
 # -----------------------------------------------------------------------------
 MP_PASS_MIN_GREEN_RATIO = _make_bars([
     # Surge: 5 candles with 3 green (60% > 50%)
-    # Net move: 10.00 to 10.82 = 8.2%
     (10.00, 10.08, 9.98, 9.99, 150000),    # RED (close < open)
-    (9.99, 10.28, 9.97, 10.25, 180000),    # green +2.6%
-    (10.25, 10.22, 10.18, 10.20, 160000),  # RED
-    (10.20, 10.55, 10.18, 10.52, 200000),  # green +3.1%
-    (10.52, 10.82, 10.50, 10.80, 220000),  # green +2.7% (high: 10.82)
+    (9.99, 10.20, 9.97, 10.18, 180000),    # green
+    (10.18, 10.15, 10.10, 10.12, 160000),  # RED
+    (10.12, 10.55, 10.10, 10.52, 200000),  # green (low: 10.10)
+    (10.52, 10.86, 10.50, 10.84, 220000),  # green (high: 10.86)
 
     # Shallow pullback
-    (10.80, 10.81, 10.45, 10.48, 90000),   # red (low: 10.45 = 3.4% from 10.82)
+    (10.84, 10.85, 10.62, 10.64, 90000),   # red (low: 10.62)
 
     # Entry: green bounce
-    (10.48, 10.75, 10.45, 10.70, 180000),  # GREEN entry
+    (10.64, 10.90, 10.60, 10.85, 180000),  # GREEN entry
 ])
 
 
 # -----------------------------------------------------------------------------
-# MP_PASS_MIN_RR: R:R at ~2.1 (just above 2.0 minimum)
-# Tests: min_rr_for_setup = 2.0
+# MP_PASS_MIN_RR: R:R just above 1.5 minimum
+# Tests: min_rr_for_setup = 1.5
+# With ATR-based stop buffer: 2-bar window bars 1-2 has low=10.25, high=10.95 → 6.83%
 # -----------------------------------------------------------------------------
 MP_PASS_MIN_RR = _make_bars([
-    # Surge: 8% move (gives decent target)
-    (10.00, 10.30, 10.00, 10.28, 150000),  # green
-    (10.28, 10.55, 10.25, 10.52, 160000),  # green
-    (10.52, 10.82, 10.50, 10.80, 180000),  # green (high: 10.82, 8.2% from 10.00)
+    # Surge: ~6.8% move (just enough for R:R ≈ 2.0 with 3% stop floor)
+    (10.00, 10.30, 10.00, 10.28, 150000),  # green (pre)
+    (10.28, 10.50, 10.25, 10.48, 160000),  # green (low: 10.25)
+    (10.48, 10.95, 10.45, 10.93, 180000),  # green (high: 10.95 → 6.83% from 10.25)
 
-    # Shallow pullback to get right R:R
-    (10.80, 10.81, 10.30, 10.32, 80000),   # red
-    (10.32, 10.35, 10.22, 10.25, 75000),   # red (low: 10.22)
+    # Shallow pullback
+    (10.93, 10.94, 10.58, 10.60, 80000),   # red
+    (10.60, 10.62, 10.52, 10.55, 75000),   # red (low: 10.52)
 
-    # Entry: green bounce
-    (10.25, 10.55, 10.20, 10.50, 180000),  # GREEN entry
+    # Entry: green bounce (open close to pullback_low for tight R:R)
+    (10.55, 10.80, 10.50, 10.75, 180000),  # GREEN entry
 ])
 
 
@@ -301,8 +302,8 @@ MP_FAIL_LAST_BAR_RED = _make_bars([
 
 
 # -----------------------------------------------------------------------------
-# MP_FAIL_RR_TOO_LOW: R:R below 2.0 minimum
-# Tests: min_rr_for_setup = 2.0
+# MP_FAIL_RR_TOO_LOW: R:R below 1.5 minimum
+# Tests: min_rr_for_setup = 1.5
 # Small prior move with wide stop = bad R:R
 # -----------------------------------------------------------------------------
 MP_FAIL_RR_TOO_LOW = _make_bars([

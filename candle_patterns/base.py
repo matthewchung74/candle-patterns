@@ -234,11 +234,23 @@ class PatternDetector(ABC):
         return sum(vols) / len(vols) if vols else 0.0
 
     @staticmethod
+    def _has_halt_bar(df: pd.DataFrame, start_idx: int, end_idx: int) -> bool:
+        """Check if any bar in [start_idx, end_idx] inclusive has zero volume (trading halt)."""
+        for i in range(start_idx, end_idx + 1):
+            if df.iloc[i]["volume"] <= 0:
+                return True
+        return False
+
+    @staticmethod
     def _bar_time(df: pd.DataFrame, idx: int) -> str:
-        """Get HH:MM timestamp string for a bar index."""
+        """Get HH:MM timestamp string for a bar index (ET)."""
         if "timestamp" in df.columns and 0 <= idx < len(df):
             ts = df.iloc[idx]["timestamp"]
             if hasattr(ts, "strftime"):
+                # Convert to ET if timezone-aware (IBKR bars are UTC)
+                if hasattr(ts, "tzinfo") and ts.tzinfo is not None:
+                    from zoneinfo import ZoneInfo
+                    ts = ts.astimezone(ZoneInfo("America/New_York"))
                 return ts.strftime("%H:%M")
         return ""
 

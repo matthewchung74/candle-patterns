@@ -325,6 +325,10 @@ class ABCD(PatternDetector):
         b_price = df.iloc[b_idx]["high"]
         c_price = df.iloc[c_idx]["low"]
 
+        # Reject if any halt bar within pattern range (A → current bar)
+        if self._has_halt_bar(df, a_idx, len(df) - 1):
+            return None
+
         # AB leg (upward move)
         ab_move = b_price - a_price
 
@@ -443,6 +447,10 @@ class ABCD(PatternDetector):
         a_price = df.iloc[a_idx]["high"]
         b_price = df.iloc[b_idx]["low"]
         c_price = df.iloc[c_idx]["high"]
+
+        # Reject if any halt bar within pattern range (A → current bar)
+        if self._has_halt_bar(df, a_idx, len(df) - 1):
+            return None
 
         # AB leg (downward move)
         ab_move = a_price - b_price
