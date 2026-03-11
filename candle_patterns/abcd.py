@@ -2,7 +2,7 @@
 ABCD Pattern Detector
 =====================
 
-Harmonic pattern detector for identifying ABCD setups.
+Harmonic pattern detector for identifying bullish ABCD setups.
 
 Pattern Structure (Bullish):
     A - Swing low (start of impulse)
@@ -10,14 +10,12 @@ Pattern Structure (Bullish):
     C - Higher low (BC retracement of 38.2%-78.6% of AB)
     D - Projected target where CD ≈ AB
 
-Pattern Structure (Bearish):
-    A - Swing high (start of impulse)
-    B - Swing low (end of AB leg)
-    C - Lower high (BC retracement of 38.2%-78.6% of AB)
-    D - Projected target where CD ≈ AB
-
 Entry: At D completion (price reaches projected D level)
-Stop: Below C (bullish) or above C (bearish)
+Stop: Below C
+
+Note: Bearish ABCD was removed — it lacks an extension gate and fires on
+any down-sloping zigzag (e.g. STAK midday chop). Short reversals are
+handled by ReversalPatternDetector which requires extension + volume.
 
 References:
 - Fibonacci retracement levels for BC leg
@@ -32,7 +30,7 @@ from .base import PatternDetector, PatternResult
 
 class ABCD(PatternDetector):
     """
-    Detect ABCD harmonic pattern.
+    Detect bullish ABCD harmonic pattern.
 
     The ABCD pattern is a measured move pattern where the CD leg
     mirrors the AB leg, with a Fibonacci retracement at point C.
@@ -56,17 +54,15 @@ class ABCD(PatternDetector):
             "cd_ab_ratio_max": 1.25,  # CD must be at most 125% of AB
             "cd_min_completion": 0.80,  # CD must be at least 80% developed
 
-            # Pre-pattern momentum: require N consecutive green/red candles
+            # Pre-pattern momentum: require N consecutive green candles
             # before point A to confirm the stock was trending into the pattern.
-            # Bullish: green candles before A (uptrend dipped to A)
-            # Bearish: red candles before A (downtrend bounced to A)
             "min_pre_a_candles": 3,
 
             # Minimum leg size (as percentage of price)
             "min_leg_pct": 1.0,  # AB leg must be at least 1% move
 
             # Stop buffer
-            "stop_buffer_pct": 0.5,  # 0.5% below/above C for stop
+            "stop_buffer_pct": 0.5,  # 0.5% below C for stop
 
             # Pattern completion tolerance
             "d_completion_tolerance": 0.02,  # 2% tolerance for D level
@@ -76,9 +72,6 @@ class ABCD(PatternDetector):
             # Set to 0 to disable either check.
             "max_bc_volume_ratio": 0.75,  # BC avg vol must be <= 75% of AB avg vol
             "min_cd_bc_volume_ratio": 1.0,  # CD avg vol must be >= 100% of BC avg vol
-
-            # Direction filter (None = detect both, "long" or "short")
-            "direction_filter": None,
         }
 
     def detect(
@@ -115,18 +108,9 @@ class ABCD(PatternDetector):
             return self.not_detected("Insufficient swing points")
 
         # Try to find bullish ABCD (A=low, B=high, C=higher low)
-        direction_filter = self.config.get("direction_filter")
-
-        if direction_filter is None or direction_filter == "long":
-            bullish_result = self._find_bullish_abcd(df, swing_highs, swing_lows)
-            if bullish_result:
-                return bullish_result
-
-        # Try to find bearish ABCD (A=high, B=low, C=lower high)
-        if direction_filter is None or direction_filter == "short":
-            bearish_result = self._find_bearish_abcd(df, swing_highs, swing_lows)
-            if bearish_result:
-                return bearish_result
+        bullish_result = self._find_bullish_abcd(df, swing_highs, swing_lows)
+        if bullish_result:
+            return bullish_result
 
         return self.not_detected("No valid ABCD pattern found")
 
@@ -218,48 +202,10 @@ class ABCD(PatternDetector):
 
         return None
 
-    def _find_bearish_abcd(
-        self,
-        df: pd.DataFrame,
-        swing_highs: List[int],
-        swing_lows: List[int],
-    ) -> Optional[PatternResult]:
-        """
-        Find bearish ABCD pattern.
+    def _check_pre_a_momentum(self, df: pd.DataFrame, a_idx: int) -> bool:
+        """Check for consecutive green candles before point A.
 
-        Bearish: A=swing high, B=swing low, C=lower swing high
-        Entry short at D (projected level where CD = AB)
-        """
-        n = len(df)
-
-        # Need at least 2 swing highs and 1 swing low
-        if len(swing_highs) < 2 or len(swing_lows) < 1:
-            return None
-
-        # Try combinations, prioritizing most recent patterns
-        for c_idx in reversed(swing_highs):
-            for b_idx in reversed(swing_lows):
-                if b_idx >= c_idx:
-                    continue  # B must be before C
-
-                for a_idx in swing_highs:
-                    if a_idx >= b_idx:
-                        continue  # A must be before B
-
-                    result = self._validate_bearish_abcd(df, a_idx, b_idx, c_idx)
-                    if result:
-                        return result
-
-        return None
-
-    def _check_pre_a_momentum(
-        self, df: pd.DataFrame, a_idx: int, direction: str
-    ) -> bool:
-        """Check for consecutive trending candles before point A.
-
-        Bullish: requires green candles (close > open) before A — confirms uptrend.
-        Bearish: requires red candles (close < open) before A — confirms downtrend.
-
+        Confirms uptrend into the pattern.
         Returns True if requirement met or disabled (min_pre_a_candles <= 0).
         """
         min_candles = self.config.get("min_pre_a_candles", 3)
@@ -272,12 +218,8 @@ class ABCD(PatternDetector):
 
         for i in range(a_idx - min_candles, a_idx):
             bar = df.iloc[i]
-            if direction == "long":
-                if bar["close"] <= bar["open"]:
-                    return False  # Not a green candle
-            else:
-                if bar["close"] >= bar["open"]:
-                    return False  # Not a red candle
+            if bar["close"] <= bar["open"]:
+                return False  # Not a green candle
 
         return True
 
@@ -338,7 +280,7 @@ class ABCD(PatternDetector):
             return None
 
         # Check pre-A momentum (require green candles before A)
-        if not self._check_pre_a_momentum(df, a_idx, "long"):
+        if not self._check_pre_a_momentum(df, a_idx):
             return None
 
         # BC retracement (downward from B to C)
@@ -436,114 +378,3 @@ class ABCD(PatternDetector):
             },
         )
 
-    def _validate_bearish_abcd(
-        self,
-        df: pd.DataFrame,
-        a_idx: int,
-        b_idx: int,
-        c_idx: int,
-    ) -> Optional[PatternResult]:
-        """Validate a potential bearish ABCD pattern."""
-        a_price = df.iloc[a_idx]["high"]
-        b_price = df.iloc[b_idx]["low"]
-        c_price = df.iloc[c_idx]["high"]
-
-        # Reject if any halt bar within pattern range (A → current bar)
-        if self._has_halt_bar(df, a_idx, len(df) - 1):
-            return None
-
-        # AB leg (downward move)
-        ab_move = a_price - b_price
-
-        # Check minimum leg size
-        min_leg_pct = self.config["min_leg_pct"]
-        if (ab_move / a_price) * 100 < min_leg_pct:
-            return None
-
-        # Check pre-A momentum (require red candles before A)
-        if not self._check_pre_a_momentum(df, a_idx, "short"):
-            return None
-
-        # BC retracement (upward from B to C)
-        bc_move = c_price - b_price
-
-        # C must be below A (lower high)
-        if c_price >= a_price:
-            return None
-
-        # Calculate BC retracement ratio
-        bc_retracement = bc_move / ab_move if ab_move != 0 else 0
-
-        # Validate BC retracement is within Fibonacci range
-        min_ret = self.config["min_bc_retracement"]
-        max_ret = self.config["max_bc_retracement"]
-        if bc_retracement < min_ret or bc_retracement > max_ret:
-            return None
-
-        # Project D level (CD = AB, so D = C - AB)
-        projected_d = c_price - ab_move
-
-        # Check if current price is approaching D
-        current_price = df.iloc[-1]["close"]
-
-        # For bearish, price should be below C (moving toward D)
-        if current_price > c_price:
-            return None  # Price hasn't dropped from C yet
-
-        # Calculate CD move so far
-        cd_move = c_price - current_price
-        cd_ab_ratio = cd_move / ab_move if ab_move != 0 else 0
-
-        # Check if CD is developing (at least 80% of expected)
-        min_completion = self.config.get("cd_min_completion", 0.80)
-        if cd_ab_ratio < min_completion:
-            return None  # CD leg not developed enough
-
-        # Volume profile check
-        vol_profile = self._check_volume_profile(df, a_idx, b_idx, c_idx)
-        if vol_profile is None:
-            return None
-
-        # Entry at current price (or projected D)
-        entry_price = current_price if current_price > projected_d else projected_d
-
-        # Stop above C with buffer
-        stop_buffer = c_price * (self.config["stop_buffer_pct"] / 100)
-        stop_price = c_price + stop_buffer
-
-        # Calculate confidence
-        cd_ab_diff = abs(1.0 - cd_ab_ratio)
-        confidence = max(0.5, min(0.95, 0.85 - cd_ab_diff * 0.5))
-
-        ideal_ret = 0.618
-        ret_diff = abs(bc_retracement - ideal_ret)
-        confidence -= ret_diff * 0.1
-
-        return PatternResult(
-            detected=True,
-            pattern_name="ABCD",
-            confidence=max(0.5, min(0.95, confidence)),
-            entry_price=entry_price,
-            stop_price=stop_price,
-            stop_distance_cents=(stop_price - entry_price) * 100,
-            pattern_start_idx=a_idx,
-            pattern_end_idx=len(df) - 1,
-            candle_count=len(df) - a_idx,
-            details={
-                "direction": "short",
-                "a_idx": a_idx,
-                "b_idx": b_idx,
-                "c_idx": c_idx,
-                "a_price": a_price,
-                "b_price": b_price,
-                "c_price": c_price,
-                "a_time": self._bar_time(df, a_idx),
-                "b_time": self._bar_time(df, b_idx),
-                "c_time": self._bar_time(df, c_idx),
-                "projected_d": projected_d,
-                "ab_move": ab_move,
-                "bc_retracement": bc_retracement,
-                "cd_ab_ratio": cd_ab_ratio,
-                **vol_profile,
-            },
-        )

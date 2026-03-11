@@ -12,7 +12,7 @@ Pattern Structure:
    - Max duration: 6 candles
 3. Entry trigger: First green candle after pullback (aggressive, Ross's style)
 
-Note: Prior moves >15% are routed to Bull Flag pattern for deeper pullbacks.
+Note: Prior moves >25% are not handled (too extended). BullFlag handles deeper pullbacks (13-25%).
 
 Detection uses flexible range-based logic:
 - Finds swing high in lookback window
@@ -45,9 +45,9 @@ class MicroPullback(PatternDetector):
         Validated against labeled trades: SPRC, GORV, SBEV, HTOO.
         """
         return {
-            # Prior move requirements (5-15% range, >15% routes to Bull Flag)
+            # Prior move requirements (5-25% range)
             "min_prior_move_pct": 5.0,  # Min 5% move before pullback
-            "max_prior_move_pct": 15.0,  # Max 15% (larger moves -> Bull Flag)
+            "max_prior_move_pct": 25.0,  # Max 25% (shallow pullbacks on big moves)
             "min_green_candles_prior": 2,  # At least 2 candles, >50% green
 
             # Shallow pullback limits (tighter than Bull Flag)

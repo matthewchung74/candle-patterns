@@ -194,7 +194,7 @@ detector = ReversalPatternDetector({
 
 ### ABCD (Harmonic)
 
-Harmonic pattern with Fibonacci retracements. Detects both bullish and bearish ABCD patterns.
+Bullish harmonic pattern with Fibonacci retracements.
 
 ```
 Bullish ABCD:
@@ -210,20 +210,6 @@ Bullish ABCD:
 A       v
 
 Entry at D completion, stop below C
-
-Bearish ABCD:
-    A - Swing high (start of impulse)
-    B - Swing low (end of AB leg)
-    C - Lower high (BC retracement of 38.2%-78.6% of AB)
-    D - Projected target where CD ≈ AB
-
-A       ^
- \     / \
-  \   /   C \
-   \ /       \
-    B         D
-
-Entry at D completion, stop above C
 ```
 
 **Configuration:**
@@ -235,7 +221,6 @@ detector = ABCD({
     "cd_ab_ratio_max": 1.25,      # CD must be at most 125% of AB
     "min_leg_pct": 1.0,           # Min 1% move for AB leg
     "swing_lookback": 3,          # Bars to confirm swing points
-    "direction_filter": None,     # None = both, "long" or "short"
 })
 
 result = detector.detect(bars)

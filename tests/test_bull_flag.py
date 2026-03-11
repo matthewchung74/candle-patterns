@@ -10,7 +10,7 @@ Rules tested:
 - max_pole_candles: 10
 - min_flag_candles: 1
 - max_flag_candles: 3
-- min_pullback_pct: 10.0%
+- min_pullback_pct: 13.0%
 - max_pullback_pct: 20.0%
 - max_flag_range_pct: 15.0%
 - max_flag_pole_volume_ratio: 0.60
@@ -71,7 +71,7 @@ class TestBullFlagDetection:
         assert result.stop_price is not None
         # Verify details
         assert result.details["pole_move_pct"] >= 15.0
-        assert 10.0 <= result.details["pullback_pct"] <= 20.0
+        assert 13.0 <= result.details["pullback_pct"] <= 20.0
         assert result.details["flag_candles"] <= 3
 
     def test_pass_min_pole_move_boundary(self):
@@ -105,11 +105,11 @@ class TestBullFlagDetection:
         assert result.details["flag_candles"] == 1
 
     def test_pass_min_pullback_boundary(self):
-        """Test detection with pullback at 10.1% (just above 10% minimum)."""
+        """Test detection with pullback at 13.1% (just above 13% minimum)."""
         result = self.detector.detect(BF_PASS_MIN_PULLBACK)
 
         assert result.detected is True
-        assert result.details["pullback_pct"] >= 10.0
+        assert result.details["pullback_pct"] >= 13.0
 
     def test_pass_max_pullback_boundary(self):
         """Test detection with pullback at ~19.5% (just below 20% maximum)."""
@@ -151,7 +151,7 @@ class TestBullFlagDetection:
         # Should fail on flag consolidation validation
 
     def test_fail_pullback_too_shallow(self):
-        """Test rejection when pullback is 9.9% (below 10% minimum)."""
+        """Test rejection when pullback is 12% (below 13% minimum)."""
         result = self.detector.detect(BF_FAIL_PULLBACK_SHALLOW)
 
         assert result.detected is False
@@ -235,7 +235,7 @@ class TestBullFlagConfig:
         assert detector.config["max_pole_candles"] == 10
         assert detector.config["min_flag_candles"] == 1
         assert detector.config["max_flag_candles"] == 3
-        assert detector.config["min_pullback_pct"] == 10.0
+        assert detector.config["min_pullback_pct"] == 13.0
         assert detector.config["max_pullback_pct"] == 20.0
         assert detector.config["volume_declining"] is True
 

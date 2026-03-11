@@ -47,6 +47,7 @@ from .rvol import (
 
 from .trend_confirmation import (
     check_5min_trend_confirmation,
+    check_momentum_deceleration,
     is_green_candle,
     is_red_candle,
     is_doji,
@@ -85,6 +86,7 @@ __all__ = [
     "is_regular_hours",
     # Trend Confirmation
     "check_5min_trend_confirmation",
+    "check_momentum_deceleration",
     "is_green_candle",
     "is_red_candle",
     "is_doji",

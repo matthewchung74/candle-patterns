@@ -172,6 +172,92 @@ def _check_short_trend(
     return True, "5-min short trend confirmed"
 
 
+def check_momentum_deceleration(
+    bars: pd.DataFrame,
+    lookback: int = 8,
+    decel_ratio: float = 0.8,
+    min_second_half_roc: float = 0.02,
+) -> Tuple[bool, str]:
+    """
+    Check if upward momentum is decelerating (required before shorting).
+
+    Two-layer check:
+    1. Absolute: if second half ROC > min_second_half_roc with volume, block
+       (catches "decelerating but still parabolic" cases)
+    2. Relative: compare half-vs-half ROC for standard deceleration check
+
+    Decision: block if price is still moving strongly upward with volume support.
+    Allow if either price has truly stalled OR volume is declining (exhaustion).
+
+    Args:
+        bars: OHLCV DataFrame (5-min recommended)
+        lookback: Number of bars to analyze (default: 8 = 40 min on 5-min bars)
+        decel_ratio: Recent ROC must be below this fraction of earlier ROC (default: 0.8)
+        min_second_half_roc: Absolute ROC floor — block if second half exceeds this
+                             with volume support, even if "decelerating" (default: 0.02 = 2%)
+
+    Returns:
+        (passed, reason): passed=True means momentum IS decelerating (ok to short)
+    """
+    if bars is None or len(bars) < lookback:
+        return False, f"Insufficient bars ({len(bars) if bars is not None else 0} < {lookback}) - blocking"
+
+    recent = bars.tail(lookback)
+    mid = lookback // 2
+
+    # --- Price ROC ---
+    first_half_start = recent.iloc[0]["close"]
+    first_half_end = recent.iloc[mid - 1]["close"]
+    second_half_start = recent.iloc[mid]["close"]
+    second_half_end = recent.iloc[-1]["close"]
+
+    first_rate = (first_half_end - first_half_start) / first_half_start if first_half_start > 0 else 0
+    second_rate = (second_half_end - second_half_start) / second_half_start if second_half_start > 0 else 0
+
+    # Check full-window ROC: if stock went down overall, no need to block short
+    full_roc = (second_half_end - first_half_start) / first_half_start if first_half_start > 0 else 0
+    if full_roc <= 0:
+        return True, f"No upward momentum across window (full ROC: {full_roc:.4f})"
+
+    # --- Volume trend ---
+    first_half_vol = recent.iloc[:mid]["volume"].mean()
+    second_half_vol = recent.iloc[mid:]["volume"].mean()
+    vol_increasing = second_half_vol >= first_half_vol if first_half_vol > 0 else False
+
+    # Layer 1: Absolute ROC floor — even if "decelerating", the second half
+    # is still too strong to short into (e.g., 13% -> 8% is "decelerating" but 8% in 20min is parabolic)
+    if second_rate >= min_second_half_roc and vol_increasing:
+        return False, (
+            f"Still accelerating: second half ROC {second_rate:.3%} >= "
+            f"{min_second_half_roc:.0%} floor, "
+            f"vol up ({second_half_vol:.0f} >= {first_half_vol:.0f})"
+        )
+
+    # Layer 2: Relative deceleration check
+    # If first half was flat/down but stock is up overall, second half is driving it
+    price_accelerating = second_rate > 0 and (
+        first_rate <= 0 or second_rate >= first_rate * decel_ratio
+    )
+
+    if price_accelerating and vol_increasing:
+        return False, (
+            f"Still accelerating: price ROC {second_rate:.3%} >= "
+            f"{decel_ratio:.0%} of {first_rate:.3%}, "
+            f"vol up ({second_half_vol:.0f} >= {first_half_vol:.0f})"
+        )
+
+    if price_accelerating and not vol_increasing:
+        return True, (
+            f"Exhaustion: price still rising ({second_rate:.3%}) "
+            f"but volume declining ({second_half_vol:.0f} < {first_half_vol:.0f})"
+        )
+
+    return True, (
+        f"Momentum decelerating: price ROC {second_rate:.3%} < "
+        f"{decel_ratio:.0%} of {first_rate:.3%}"
+    )
+
+
 def is_green_candle(open_price: float, close_price: float) -> bool:
     """Check if candle is green (bullish)."""
     return close_price > open_price

@@ -293,19 +293,6 @@ ABCD_PASS_BULLISH_VALID = {
     "description": "Valid bullish ABCD with 50% BC retracement",
 }
 
-# Valid bearish ABCD with 50% BC retracement
-# A=$20.00, B=$17.00 (AB=15%), C=$18.50 (BC=50%), D=$15.50 projected
-ABCD_PASS_BEARISH_VALID = {
-    "bars": _make_abcd_bars(
-        a_price=20.00,
-        b_price=17.00,
-        c_price=18.50,
-        current_price=16.00,
-        direction="short",
-    ),
-    "description": "Valid bearish ABCD with 50% BC retracement",
-}
-
 # Valid bullish ABCD with ideal 61.8% Fibonacci retracement
 # A=$10.00, B=$12.00 (AB=20%), C=$10.76 (BC=62%), D=$12.76 projected
 ABCD_PASS_618_RETRACEMENT = {
@@ -460,35 +447,4 @@ ABCD_FAIL_NO_SWING_POINTS = {
         "volume": 100000,
     } for i in range(20)]),
     "description": "Flat price action, no swing points",
-}
-
-
-# =============================================================================
-# DIRECTION FILTER FIXTURES
-# =============================================================================
-
-# Bearish pattern present but filter is 'long'
-ABCD_FILTER_BULLISH_ONLY = {
-    "bars": _make_abcd_bars(
-        a_price=20.00,
-        b_price=17.00,
-        c_price=18.50,
-        current_price=16.00,
-        direction="short",
-    ),
-    "config": {"direction_filter": "long"},
-    "description": "Bearish pattern not detected when filter is 'long'",
-}
-
-# Bullish pattern present but filter is 'short'
-ABCD_FILTER_BEARISH_ONLY = {
-    "bars": _make_abcd_bars(
-        a_price=10.00,
-        b_price=11.50,
-        c_price=10.75,
-        current_price=12.00,
-        direction="long",
-    ),
-    "config": {"direction_filter": "short"},
-    "description": "Bullish pattern not detected when filter is 'short'",
 }

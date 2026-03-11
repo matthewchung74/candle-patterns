@@ -47,6 +47,7 @@ class ReversalPatternDetector(PatternDetector):
             # Volume climax detection
             "volume_climax_multiplier": 3.0,  # Volume > 3x 20-bar avg
             "volume_avg_period": 20,           # Bars for average volume
+            "min_volume_multiplier": 1.5,      # Reversal bar volume >= 1.5x avg
 
             # Shooting star requirements
             "min_upper_wick_ratio": 2.0,       # Upper wick >= 2x body
@@ -69,6 +70,9 @@ class ReversalPatternDetector(PatternDetector):
             # Risk parameters
             "stop_buffer_pct": 1.0,            # Stop 1% above HOD
             "stop_buffer_min_cents": 5,        # Minimum 5 cents buffer
+            "short_stop_buffer_cents": 2,      # Fixed 2c buffer above pattern high
+            "short_stop_min_pct": 0.5,         # Min buffer as % of price (scales with price)
+            "max_target_r_multiple": 8.0,      # Cap target at 8x risk from entry
 
             # Minimum bars needed
             "min_bars_required": 10,
@@ -215,9 +219,17 @@ class ReversalPatternDetector(PatternDetector):
         if hod_fail is not None:
             return hod_fail
 
+        # Volume gate
+        vol_passed, volume_ratio, avg_volume = self._check_reversal_volume(df, bar["volume"])
+        if not vol_passed:
+            return self.not_detected(
+                f"ShootingStar volume too low: {volume_ratio:.2f}x avg < {self.config['min_volume_multiplier']}x"
+            )
+
         # Calculate entry/stop for short
         entry_price = close  # Enter on close of shooting star
-        stop_price = self._calculate_stop(df, "above")
+        pattern_high = bar["high"]
+        stop_price = self._calculate_stop(df, "above", pattern_high=pattern_high)
         if stop_price <= entry_price:
             return self.not_detected(f"Invalid setup: stop ${stop_price:.2f} <= entry ${entry_price:.2f}")
 
@@ -225,7 +237,7 @@ class ReversalPatternDetector(PatternDetector):
 
         # Calculate rise and retracement target
         rise_amount, run_low, run_high = self._calculate_rise(df)
-        target_price = self._calculate_retracement_target(run_low, run_high)
+        target_price = self._cap_target(entry_price, stop_price, self._calculate_retracement_target(run_low, run_high))
         rise_pct = self.calculate_move_pct(run_low, run_high)
 
         # Build result
@@ -242,7 +254,7 @@ class ReversalPatternDetector(PatternDetector):
             confidence=confidence,
             entry_price=entry_price,
             stop_price=stop_price,
-            target_price=None,
+            target_price=target_price,
             stop_distance_cents=stop_distance_cents,
             pattern_start_idx=n - 4,
             pattern_end_idx=n - 1,
@@ -255,6 +267,8 @@ class ReversalPatternDetector(PatternDetector):
                 "body_position_pct": body_position_pct,
                 "distance_from_hod_pct": distance_from_hod_pct,
                 "green_bars_prior": green_count,
+                "volume_ratio": volume_ratio,
+                "avg_volume": avg_volume,
                 "direction": "short",
                 "rise_amount": rise_amount,
                 "rise_pct": rise_pct,
@@ -324,9 +338,17 @@ class ReversalPatternDetector(PatternDetector):
         if hod_fail is not None:
             return hod_fail
 
+        # Volume gate
+        vol_passed, volume_ratio, avg_volume = self._check_reversal_volume(df, curr["volume"])
+        if not vol_passed:
+            return self.not_detected(
+                f"BearishEngulfing volume too low: {volume_ratio:.2f}x avg < {self.config['min_volume_multiplier']}x"
+            )
+
         # Calculate entry/stop
         entry_price = curr["close"]
-        stop_price = self._calculate_stop(df, "above")
+        pattern_high = max(curr["high"], prev["high"])
+        stop_price = self._calculate_stop(df, "above", pattern_high=pattern_high)
         if stop_price <= entry_price:
             return self.not_detected(f"Invalid setup: stop ${stop_price:.2f} <= entry ${entry_price:.2f}")
 
@@ -334,7 +356,7 @@ class ReversalPatternDetector(PatternDetector):
 
         # Calculate rise and retracement target
         rise_amount, run_low, run_high = self._calculate_rise(df)
-        target_price = self._calculate_retracement_target(run_low, run_high)
+        target_price = self._cap_target(entry_price, stop_price, self._calculate_retracement_target(run_low, run_high))
         rise_pct = self.calculate_move_pct(run_low, run_high)
 
         confidence = self._calculate_confidence(
@@ -350,7 +372,7 @@ class ReversalPatternDetector(PatternDetector):
             confidence=confidence,
             entry_price=entry_price,
             stop_price=stop_price,
-            target_price=None,
+            target_price=target_price,
             stop_distance_cents=stop_distance_cents,
             pattern_start_idx=n - 2,
             pattern_end_idx=n - 1,
@@ -361,6 +383,8 @@ class ReversalPatternDetector(PatternDetector):
             details={
                 "engulf_ratio": engulf_ratio,
                 "distance_from_hod_pct": distance_from_hod_pct,
+                "volume_ratio": volume_ratio,
+                "avg_volume": avg_volume,
                 "direction": "short",
                 "rise_amount": rise_amount,
                 "rise_pct": rise_pct,
@@ -426,9 +450,16 @@ class ReversalPatternDetector(PatternDetector):
         if hod_fail is not None:
             return hod_fail
 
+        # Volume gate
+        vol_passed, volume_ratio, avg_volume = self._check_reversal_volume(df, bar3["volume"])
+        if not vol_passed:
+            return self.not_detected(
+                f"EveningStar volume too low: {volume_ratio:.2f}x avg < {self.config['min_volume_multiplier']}x"
+            )
+
         # Calculate entry/stop
         entry_price = bar3["close"]
-        stop_price = self._calculate_stop(df, "above")
+        stop_price = self._calculate_stop(df, "above", pattern_high=pattern_high)
         if stop_price <= entry_price:
             return self.not_detected(f"Invalid setup: stop ${stop_price:.2f} <= entry ${entry_price:.2f}")
 
@@ -436,7 +467,7 @@ class ReversalPatternDetector(PatternDetector):
 
         # Calculate rise and retracement target
         rise_amount, run_low, run_high = self._calculate_rise(df)
-        target_price = self._calculate_retracement_target(run_low, run_high)
+        target_price = self._cap_target(entry_price, stop_price, self._calculate_retracement_target(run_low, run_high))
         rise_pct = self.calculate_move_pct(run_low, run_high)
 
         confidence = self._calculate_confidence(
@@ -452,7 +483,7 @@ class ReversalPatternDetector(PatternDetector):
             confidence=confidence,
             entry_price=entry_price,
             stop_price=stop_price,
-            target_price=None,
+            target_price=target_price,
             stop_distance_cents=stop_distance_cents,
             pattern_start_idx=n - 3,
             pattern_end_idx=n - 1,
@@ -464,6 +495,8 @@ class ReversalPatternDetector(PatternDetector):
                 "bar1_body_pct": bar1_body_pct,
                 "bar2_body_pct": bar2_body_pct,
                 "distance_from_hod_pct": distance_from_hod_pct,
+                "volume_ratio": volume_ratio,
+                "avg_volume": avg_volume,
                 "direction": "short",
                 "rise_amount": rise_amount,
                 "rise_pct": rise_pct,
@@ -535,7 +568,8 @@ class ReversalPatternDetector(PatternDetector):
 
             # Volume climax with reversal found
             entry_price = df.iloc[-1]["close"]  # Enter on current bar's close
-            stop_price = self._calculate_stop(df, "above")
+            climax_pattern_high = df.iloc[bar_idx:]["high"].max()
+            stop_price = self._calculate_stop(df, "above", pattern_high=climax_pattern_high)
             if stop_price <= entry_price:
                 return self.not_detected(f"Invalid setup: stop ${stop_price:.2f} <= entry ${entry_price:.2f}")
 
@@ -543,7 +577,7 @@ class ReversalPatternDetector(PatternDetector):
 
             # Calculate rise and retracement target
             rise_amount, run_low, run_high = self._calculate_rise(df)
-            target_price = self._calculate_retracement_target(run_low, run_high)
+            target_price = self._cap_target(entry_price, stop_price, self._calculate_retracement_target(run_low, run_high))
             rise_pct = self.calculate_move_pct(run_low, run_high)
 
             confidence = self._calculate_confidence(
@@ -560,7 +594,7 @@ class ReversalPatternDetector(PatternDetector):
                 confidence=confidence,
                 entry_price=entry_price,
                 stop_price=stop_price,
-                target_price=None,
+                target_price=target_price,
                 stop_distance_cents=stop_distance_cents,
                 pattern_start_idx=bar_idx,
                 pattern_end_idx=n - 1,
@@ -590,21 +624,43 @@ class ReversalPatternDetector(PatternDetector):
         )
 
     def _calculate_rise(self, df: pd.DataFrame) -> tuple:
-        """Return (rise_amount, run_low, run_high) from last 10 bars.
+        """Return (rise_amount, run_low, run_high) from full session.
 
-        Uses the same 10-bar window as _calculate_stop() for consistency.
-        This measures the recent micro-run (not full session), which is more
-        conservative: smaller run → smaller target → harder to pass R:R gate.
+        Uses full session range for meaningful target calculation.
+        Combined with tight pattern-high stops, this gives realistic R:R.
         """
-        recent = df.tail(10) if len(df) > 10 else df
-        run_low = recent["low"].min()
-        run_high = recent["high"].max()
+        run_low = df["low"].min()
+        run_high = df["high"].max()
         rise_amount = run_high - run_low
         return rise_amount, run_low, run_high
 
     def _calculate_retracement_target(self, run_low: float, run_high: float, pct: float = 0.50) -> float:
         """Target at pct retracement of the rise (default 50% = midpoint)."""
         return run_high - (run_high - run_low) * pct
+
+    def _cap_target(self, entry_price: float, stop_price: float, target_price: float) -> float:
+        """Cap target distance at max_target_r_multiple × risk distance.
+
+        Prevents inflated R:R from session-wide targets on extended stocks.
+        For shorts: target is below entry, so capped = entry - max_reward.
+        """
+        max_r = self.config.get("max_target_r_multiple", 8.0)
+        risk = abs(stop_price - entry_price)
+        max_reward = risk * max_r
+        capped = entry_price - max_reward  # Short: target below entry
+        return max(target_price, capped)  # max because both are below entry
+
+    def _check_reversal_volume(self, df: pd.DataFrame, bar_volume: float) -> tuple[bool, float, float]:
+        """Check if reversal bar volume meets minimum multiplier of average.
+
+        Returns (passed, volume_ratio, avg_volume).
+        """
+        base = df.iloc[:-3] if len(df) > 5 else df
+        trading_bars = base[base["volume"] > 0]
+        avg_volume = trading_bars["volume"].mean() if len(trading_bars) > 0 else 0
+        volume_ratio = bar_volume / avg_volume if avg_volume > 0 else 0
+        passed = volume_ratio >= self.config["min_volume_multiplier"]
+        return passed, volume_ratio, avg_volume
 
     def _check_hod_recency(self, df: pd.DataFrame, pattern_high: float, max_distance_pct: float):
         """
@@ -656,25 +712,30 @@ class ReversalPatternDetector(PatternDetector):
 
         return upper_wick_ratio >= 1.5 and body_position <= 0.4
 
-    def _calculate_stop(self, df: pd.DataFrame, direction: str) -> float:
+    def _calculate_stop(self, df: pd.DataFrame, direction: str, pattern_high: float | None = None) -> float:
         """
         Calculate stop price for short entry.
 
         Args:
             df: OHLCV DataFrame
             direction: "above" for short entries (stop above HOD)
+            pattern_high: When provided, use tight stop at pattern high + fixed buffer
 
         Returns:
             Stop price
         """
-        # Use recent bars (last 10) for stop placement, not full session HOD.
-        # Pattern detection already requires the pattern to be near HOD,
-        # so recent bars contain the relevant high.
-        recent_bars = df.tail(10) if len(df) > 10 else df
-        hod = recent_bars["high"].max()
-
         if direction == "above":
-            # Stop above HOD for shorts
+            if pattern_high is not None:
+                # Tight stop: pattern high + max(fixed cents, % of price)
+                cents_buffer = self.config.get("short_stop_buffer_cents", 2) / 100
+                pct_buffer = pattern_high * self.config.get("short_stop_min_pct", 0.5) / 100
+                buffer = max(cents_buffer, pct_buffer)
+                return pattern_high + buffer
+
+            # Fallback: 10-bar HOD with percentage buffer
+            recent_bars = df.tail(10) if len(df) > 10 else df
+            hod = recent_bars["high"].max()
+
             stop_buffer_pct = self.config.get("stop_buffer_pct", 1.0)
             stop_buffer_min_cents = self.config.get("stop_buffer_min_cents", 5)
 

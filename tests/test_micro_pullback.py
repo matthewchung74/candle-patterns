@@ -122,7 +122,7 @@ class TestMicroPullbackDetection:
         # Should fail on surge validation
 
     def test_fail_above_max_prior_move(self):
-        """Test rejection when prior move is 15.1% (above 15% maximum)."""
+        """Test rejection when prior move is above 25% maximum."""
         result = self.detector.detect(MP_FAIL_ABOVE_MAX_PRIOR)
 
         assert result.detected is False
@@ -273,7 +273,7 @@ class TestMicroPullbackConfig:
         detector = MicroPullback()
 
         assert detector.config["min_prior_move_pct"] == 5.0
-        assert detector.config["max_prior_move_pct"] == 15.0
+        assert detector.config["max_prior_move_pct"] == 25.0
         assert detector.config["max_pullback_pct"] == 12.0
         assert detector.config["max_pullback_candles"] == 3
         assert detector.config["entry"] == "first_green_after_pullback"
@@ -289,7 +289,7 @@ class TestMicroPullbackConfig:
         assert custom.config["min_prior_move_pct"] == 8.0
         assert custom.config["max_pullback_pct"] == 10.0
         # Other defaults should remain
-        assert custom.config["max_prior_move_pct"] == 15.0
+        assert custom.config["max_prior_move_pct"] == 25.0
 
 
 if __name__ == "__main__":

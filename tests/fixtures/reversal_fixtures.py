@@ -262,6 +262,62 @@ REVERSAL_FAIL_VOLUME_CLIMAX_NO_REVERSAL = _make_bars([
 
 
 # =============================================================================
+# LOW VOLUME FAIL FIXTURES
+# =============================================================================
+
+# FAIL: Valid shooting star shape but low volume on reversal bar
+# Avg of bars[:-3] = ~13571, reversal bar vol 5000 = 0.37x < 1.5x
+REVERSAL_FAIL_SHOOTING_STAR_LOW_VOLUME = _make_bars([
+    {"open": 1.00, "high": 1.03, "low": 0.99, "close": 1.02, "volume": 8000},
+    {"open": 1.02, "high": 1.05, "low": 1.01, "close": 1.04, "volume": 10000},
+    {"open": 1.04, "high": 1.10, "low": 1.03, "close": 1.09, "volume": 12000},
+    {"open": 1.09, "high": 1.15, "low": 1.08, "close": 1.14, "volume": 15000},
+    {"open": 1.14, "high": 1.20, "low": 1.13, "close": 1.19, "volume": 18000},
+    {"open": 1.19, "high": 1.26, "low": 1.18, "close": 1.25, "volume": 20000},
+    {"open": 1.25, "high": 1.27, "low": 1.23, "close": 1.26, "volume": 12000},
+    {"open": 1.26, "high": 1.28, "low": 1.24, "close": 1.27, "volume": 11000},
+    {"open": 1.27, "high": 1.29, "low": 1.25, "close": 1.28, "volume": 10000},
+    # Shooting star shape but LOW volume (5000 vs ~13k avg = 0.37x)
+    {"open": 1.28, "high": 1.40, "low": 1.27, "close": 1.29, "volume": 5000},
+])
+
+# FAIL: Valid bearish engulfing shape but low volume on reversal bar
+# Avg of bars[:-3] = ~13286, reversal bar vol 5000 = 0.38x < 1.5x
+REVERSAL_FAIL_BEARISH_ENGULFING_LOW_VOLUME = _make_bars([
+    {"open": 1.00, "high": 1.03, "low": 0.99, "close": 1.02, "volume": 8000},
+    {"open": 1.02, "high": 1.05, "low": 1.01, "close": 1.04, "volume": 10000},
+    {"open": 1.04, "high": 1.10, "low": 1.03, "close": 1.09, "volume": 12000},
+    {"open": 1.09, "high": 1.15, "low": 1.08, "close": 1.14, "volume": 15000},
+    {"open": 1.14, "high": 1.20, "low": 1.13, "close": 1.19, "volume": 18000},
+    {"open": 1.19, "high": 1.26, "low": 1.18, "close": 1.25, "volume": 20000},
+    {"open": 1.25, "high": 1.27, "low": 1.23, "close": 1.26, "volume": 12000},
+    {"open": 1.26, "high": 1.28, "low": 1.24, "close": 1.27, "volume": 11000},
+    # Green candle (will be engulfed)
+    {"open": 1.27, "high": 1.32, "low": 1.26, "close": 1.31, "volume": 15000},
+    # Red engulfing but LOW volume (5000 vs ~13k avg = 0.38x)
+    {"open": 1.33, "high": 1.34, "low": 1.23, "close": 1.24, "volume": 5000},
+])
+
+# FAIL: Valid evening star shape but low volume on final bar
+# Avg of bars[:-3] = ~13571, final bar vol 5000 = 0.37x < 1.5x
+REVERSAL_FAIL_EVENING_STAR_LOW_VOLUME = _make_bars([
+    {"open": 1.00, "high": 1.03, "low": 0.99, "close": 1.02, "volume": 8000},
+    {"open": 1.02, "high": 1.05, "low": 1.01, "close": 1.04, "volume": 10000},
+    {"open": 1.04, "high": 1.10, "low": 1.03, "close": 1.09, "volume": 12000},
+    {"open": 1.09, "high": 1.15, "low": 1.08, "close": 1.14, "volume": 15000},
+    {"open": 1.14, "high": 1.20, "low": 1.13, "close": 1.19, "volume": 18000},
+    {"open": 1.19, "high": 1.26, "low": 1.18, "close": 1.25, "volume": 20000},
+    {"open": 1.25, "high": 1.28, "low": 1.24, "close": 1.27, "volume": 15000},
+    # Bar 1: Strong green
+    {"open": 1.27, "high": 1.35, "low": 1.26, "close": 1.32, "volume": 18000},
+    # Bar 2: Small body (doji)
+    {"open": 1.33, "high": 1.36, "low": 1.32, "close": 1.34, "volume": 10000},
+    # Bar 3: Red closes below midpoint but LOW volume (5000 vs ~14k avg = 0.36x)
+    {"open": 1.33, "high": 1.34, "low": 1.22, "close": 1.24, "volume": 5000},
+])
+
+
+# =============================================================================
 # STALE HOD FIXTURES
 # =============================================================================
 
@@ -329,4 +385,33 @@ REVERSAL_PASS_MULTI_PATTERN = _make_bars([
     # Shooting star WITH volume climax: both patterns present
     {"open": 1.33, "high": 1.45, "low": 1.32, "close": 1.34, "volume": 50000},
     {"open": 1.33, "high": 1.35, "low": 1.28, "close": 1.29, "volume": 25000},
+])
+
+
+# =============================================================================
+# WIDE SESSION FIXTURE (proves session-wide target)
+# =============================================================================
+
+# PASS: Shooting star with early-session lows far below 10-bar window
+# Bars 0-3 have lows ~0.75-0.93, bars 4+ are ~1.00+
+# This proves _calculate_rise uses full session (run_low=0.75) not 10-bar window
+REVERSAL_PASS_SHOOTING_STAR_WIDE_SESSION = _make_bars([
+    # Early session: low prices (session low = 0.75)
+    {"open": 0.80, "high": 0.85, "low": 0.75, "close": 0.83, "volume": 8000},
+    {"open": 0.83, "high": 0.90, "low": 0.82, "close": 0.88, "volume": 9000},
+    {"open": 0.88, "high": 0.95, "low": 0.87, "close": 0.93, "volume": 10000},
+    {"open": 0.93, "high": 1.02, "low": 0.92, "close": 1.00, "volume": 11000},
+    # Strong rally phase
+    {"open": 1.00, "high": 1.08, "low": 0.99, "close": 1.06, "volume": 12000},
+    {"open": 1.06, "high": 1.14, "low": 1.05, "close": 1.12, "volume": 14000},
+    {"open": 1.12, "high": 1.20, "low": 1.11, "close": 1.18, "volume": 16000},
+    {"open": 1.18, "high": 1.26, "low": 1.17, "close": 1.24, "volume": 18000},
+    # Consolidation near highs
+    {"open": 1.24, "high": 1.28, "low": 1.22, "close": 1.26, "volume": 12000},
+    {"open": 1.26, "high": 1.29, "low": 1.24, "close": 1.27, "volume": 11000},
+    {"open": 1.27, "high": 1.30, "low": 1.25, "close": 1.28, "volume": 10000},
+    # Shooting star: long upper wick, body in lower third
+    # Upper wick = 0.11, Body = 0.01, Ratio = 11x
+    # Volume = 25000 vs avg of prior bars (~11909) = 2.1x (passes 1.5x gate)
+    {"open": 1.28, "high": 1.40, "low": 1.27, "close": 1.29, "volume": 25000},
 ])

@@ -2,7 +2,7 @@
 ABCD Pattern Tests
 ==================
 
-Comprehensive boundary/limit tests for ABCD harmonic pattern detection.
+Comprehensive boundary/limit tests for bullish ABCD harmonic pattern detection.
 
 Rules tested:
 - min_bars_required: 10
@@ -14,7 +14,6 @@ Rules tested:
 - min_leg_pct: 1.0%
 - stop_buffer_pct: 0.5%
 - d_completion_tolerance: 0.02 (2%)
-- direction_filter: None (detect both bullish/bearish)
 
 Run with: pytest tests/test_abcd.py -v
 """
@@ -28,7 +27,6 @@ from candle_patterns import ABCD, PatternResult
 from tests.fixtures.abcd_fixtures import (
     # PASS cases
     ABCD_PASS_BULLISH_VALID,
-    ABCD_PASS_BEARISH_VALID,
     ABCD_PASS_618_RETRACEMENT,
     ABCD_PASS_MIN_BC_RETRACEMENT,
     ABCD_PASS_MAX_BC_RETRACEMENT,
@@ -42,9 +40,6 @@ from tests.fixtures.abcd_fixtures import (
     ABCD_FAIL_AB_TOO_SMALL,
     ABCD_FAIL_INSUFFICIENT_BARS,
     ABCD_FAIL_NO_SWING_POINTS,
-    # Direction filter cases
-    ABCD_FILTER_BULLISH_ONLY,
-    ABCD_FILTER_BEARISH_ONLY,
 )
 
 
@@ -71,17 +66,6 @@ class TestABCDDetection:
         assert result.stop_price is not None
         assert result.stop_price < result.entry_price  # Long: stop below entry
         # Verify Fibonacci retracement in valid range
-        assert 0.382 <= result.details["bc_retracement"] <= 0.786
-
-    def test_pass_bearish_valid(self):
-        """Test that a standard valid bearish ABCD is detected."""
-        fixture = ABCD_PASS_BEARISH_VALID
-        result = self.detector.detect(fixture["bars"])
-
-        assert result.detected is True
-        assert result.pattern_name == "ABCD"
-        assert result.details["direction"] == "short"
-        assert result.stop_price > result.entry_price  # Short: stop above entry
         assert 0.382 <= result.details["bc_retracement"] <= 0.786
 
     def test_pass_618_retracement(self):
@@ -187,30 +171,6 @@ class TestABCDDetection:
         assert "swing" in result.reason.lower()
 
 
-class TestABCDDirectionFilter:
-    """Tests for direction filter functionality."""
-
-    def test_filter_bullish_only(self):
-        """Test direction_filter='long' rejects bearish patterns."""
-        fixture = ABCD_FILTER_BULLISH_ONLY
-        detector = ABCD(config=fixture["config"])
-        result = detector.detect(fixture["bars"])
-
-        # Should not detect bearish pattern when filter is 'long'
-        if result.detected:
-            assert result.details["direction"] == "long"
-
-    def test_filter_bearish_only(self):
-        """Test direction_filter='short' rejects bullish patterns."""
-        fixture = ABCD_FILTER_BEARISH_ONLY
-        detector = ABCD(config=fixture["config"])
-        result = detector.detect(fixture["bars"])
-
-        # Should not detect bullish pattern when filter is 'short'
-        if result.detected:
-            assert result.details["direction"] == "short"
-
-
 class TestABCDConfig:
     """Tests for ABCD configuration."""
 
@@ -227,7 +187,6 @@ class TestABCDConfig:
         assert detector.config["min_leg_pct"] == 1.0
         assert detector.config["stop_buffer_pct"] == 0.5
         assert detector.config["d_completion_tolerance"] == 0.02
-        assert detector.config["direction_filter"] is None
 
     def test_custom_config_override(self):
         """Test that custom config overrides defaults."""
@@ -275,17 +234,6 @@ class TestABCDPatternDetails:
             assert result.details["b_idx"] < result.details["c_idx"]
             assert result.details["c_price"] > result.details["a_price"]  # Higher low
             assert result.details["b_price"] > result.details["a_price"]  # B is high
-
-    def test_bearish_details_structure(self):
-        """Test bearish pattern returns correct details structure."""
-        fixture = ABCD_PASS_BEARISH_VALID
-        result = self.detector.detect(fixture["bars"])
-
-        if result.detected:
-            assert result.details["direction"] == "short"
-            assert result.details["c_price"] < result.details["a_price"]  # Lower high
-            assert result.details["b_price"] < result.details["a_price"]  # B is low
-
 
 class TestABCDEdgeCases:
     """Tests for edge cases and boundary conditions."""
@@ -376,22 +324,6 @@ class TestABCDPreAMomentum:
         result = detector.detect(bars)
         assert result.detected is False
 
-    def test_bearish_rejected_when_pre_a_candles_green(self):
-        """Bearish ABCD rejected when 3 candles before A are green (no downtrend)."""
-        fixture = ABCD_PASS_BEARISH_VALID
-        bars = fixture["bars"].copy()
-
-        # Flip pre-A candles (indices 0-2) from red to green
-        for i in range(3):
-            orig_open = bars.at[i, "open"]
-            orig_close = bars.at[i, "close"]
-            bars.at[i, "open"] = min(orig_open, orig_close)
-            bars.at[i, "close"] = max(orig_open, orig_close) + 0.01
-
-        detector = ABCD()
-        result = detector.detect(bars)
-        assert result.detected is False
-
     def test_check_disabled_when_min_pre_a_candles_zero(self):
         """Pattern detected regardless of candle color when check is disabled."""
         fixture = ABCD_PASS_BULLISH_VALID
@@ -467,17 +399,6 @@ class TestABCDVolumeProfile:
         assert "cd_bc_volume_ratio" in result.details
         assert result.details["bc_volume_ratio"] <= 0.75
         assert result.details["cd_bc_volume_ratio"] >= 1.0
-
-    def test_bearish_details_include_volume_ratios(self):
-        """Bearish pattern includes volume ratio details for logging."""
-        fixture = ABCD_PASS_BEARISH_VALID
-        detector = ABCD()
-        result = detector.detect(fixture["bars"])
-
-        assert result.detected is True
-        assert result.details["bc_volume_ratio"] <= 0.75
-        assert result.details["cd_bc_volume_ratio"] >= 1.0
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -38,6 +38,12 @@ from tests.fixtures.reversal_fixtures import (
     REVERSAL_FAIL_NOT_EXTENDED,
     # Multi-pattern
     REVERSAL_PASS_MULTI_PATTERN,
+    # Low volume
+    REVERSAL_FAIL_SHOOTING_STAR_LOW_VOLUME,
+    REVERSAL_FAIL_BEARISH_ENGULFING_LOW_VOLUME,
+    REVERSAL_FAIL_EVENING_STAR_LOW_VOLUME,
+    # Wide session
+    REVERSAL_PASS_SHOOTING_STAR_WIDE_SESSION,
 )
 
 
@@ -64,6 +70,18 @@ class TestReversalPatternDetection:
         assert result.stop_price > result.entry_price
         assert result.details["direction"] == "short"
         assert result.details["upper_wick_ratio"] >= 2.0
+
+    def test_shooting_star_has_volume_ratio(self):
+        """Shooting star should have volume_ratio >= 1.5x in details."""
+        result = self.detector.detect(REVERSAL_PASS_SHOOTING_STAR)
+        assert result.detected is True
+        assert result.details["volume_ratio"] >= 1.5
+
+    def test_shooting_star_low_volume_rejected(self):
+        """Shooting star with low volume should be rejected."""
+        result = self.detector.detect(REVERSAL_FAIL_SHOOTING_STAR_LOW_VOLUME)
+        if result.detected and result.pattern_name == "ShootingStar":
+            pytest.fail("Should not detect shooting star with low volume")
 
     def test_shooting_star_no_uptrend_rejected(self):
         """Test that shooting star without uptrend is rejected."""
@@ -96,6 +114,18 @@ class TestReversalPatternDetection:
         assert result.details["direction"] == "short"
         assert result.details["engulf_ratio"] >= 1.0
 
+    def test_bearish_engulfing_has_volume_ratio(self):
+        """Bearish engulfing should have volume_ratio >= 1.5x in details."""
+        result = self.detector.detect(REVERSAL_PASS_BEARISH_ENGULFING)
+        assert result.detected is True
+        assert result.details["volume_ratio"] >= 1.5
+
+    def test_bearish_engulfing_low_volume_rejected(self):
+        """Bearish engulfing with low volume should be rejected."""
+        result = self.detector.detect(REVERSAL_FAIL_BEARISH_ENGULFING_LOW_VOLUME)
+        if result.detected and result.pattern_name == "BearishEngulfing":
+            pytest.fail("Should not detect bearish engulfing with low volume")
+
     def test_bearish_engulfing_partial_rejected(self):
         """Test that partial engulfing is rejected."""
         result = self.detector.detect(REVERSAL_FAIL_BEARISH_ENGULF_PARTIAL)
@@ -118,6 +148,18 @@ class TestReversalPatternDetection:
         assert result.stop_price > result.entry_price
         assert result.details["direction"] == "short"
         assert result.candle_count == 3
+
+    def test_evening_star_has_volume_ratio(self):
+        """Evening star should have volume_ratio >= 1.5x in details."""
+        result = self.detector.detect(REVERSAL_PASS_EVENING_STAR)
+        assert result.detected is True
+        assert result.details["volume_ratio"] >= 1.5
+
+    def test_evening_star_low_volume_rejected(self):
+        """Evening star with low volume should be rejected."""
+        result = self.detector.detect(REVERSAL_FAIL_EVENING_STAR_LOW_VOLUME)
+        if result.detected and result.pattern_name == "EveningStar":
+            pytest.fail("Should not detect evening star with low volume")
 
     def test_evening_star_large_middle_rejected(self):
         """Test that evening star with large middle body is rejected."""
@@ -238,6 +280,8 @@ class TestReversalPatternConfig:
         assert detector.config["min_upper_wick_ratio"] == 2.0
         assert detector.config["max_body_position_pct"] == 33.0
         assert detector.config["stop_buffer_pct"] == 1.0  # Reduced from 2%
+        assert detector.config["min_volume_multiplier"] == 1.5
+        assert detector.config["short_stop_buffer_cents"] == 2
 
     def test_custom_config_override(self):
         """Test that custom config overrides defaults."""
@@ -269,18 +313,14 @@ class TestReversalPatternConfig:
 class TestReversalPatternStopCalculation:
     """Tests for stop price calculation."""
 
-    def test_stop_above_hod_for_shorts(self):
-        """Test that stop is placed above HOD for short entries."""
+    def test_stop_above_pattern_high_for_shorts(self):
+        """Stop is placed 2c above pattern high."""
         detector = ReversalPatternDetector()
         result = detector.detect(REVERSAL_PASS_SHOOTING_STAR)
 
-        if result.detected:
-            # Stop should be above HOD
-            hod = REVERSAL_PASS_SHOOTING_STAR["high"].max()
-            assert result.stop_price > hod
-            # Stop should include buffer
-            buffer = result.stop_price - hod
-            assert buffer >= 0.05  # At least 5 cents buffer
+        assert result.detected is True
+        pattern_high = REVERSAL_PASS_SHOOTING_STAR.iloc[-1]["high"]
+        assert result.stop_price == pytest.approx(pattern_high + 0.02, abs=0.001)
 
     def test_stop_distance_calculation(self):
         """Test that stop distance is calculated correctly."""
@@ -318,33 +358,33 @@ class TestReversalRetracementTarget:
     def setup_method(self):
         self.detector = ReversalPatternDetector()
 
-    def test_shooting_star_target_in_details(self):
-        """Shooting star should have retracement_target in details (target_price=None for bracket_rr)."""
+    def test_shooting_star_target_wired(self):
+        """Shooting star should wire retracement target into target_price."""
         result = self.detector.detect(REVERSAL_PASS_SHOOTING_STAR)
         assert result.detected is True
-        assert result.target_price is None
-        assert result.details["retracement_target"] is not None
+        assert result.target_price is not None
+        assert result.target_price == result.details["retracement_target"]
 
-    def test_bearish_engulfing_target_in_details(self):
-        """Bearish engulfing should have retracement_target in details."""
+    def test_bearish_engulfing_target_wired(self):
+        """Bearish engulfing should wire retracement target into target_price."""
         result = self.detector.detect(REVERSAL_PASS_BEARISH_ENGULFING)
         assert result.detected is True
-        assert result.target_price is None
-        assert result.details["retracement_target"] is not None
+        assert result.target_price is not None
+        assert result.target_price == result.details["retracement_target"]
 
-    def test_evening_star_target_in_details(self):
-        """Evening star should have retracement_target in details."""
+    def test_evening_star_target_wired(self):
+        """Evening star should wire retracement target into target_price."""
         result = self.detector.detect(REVERSAL_PASS_EVENING_STAR)
         assert result.detected is True
-        assert result.target_price is None
-        assert result.details["retracement_target"] is not None
+        assert result.target_price is not None
+        assert result.target_price == result.details["retracement_target"]
 
-    def test_volume_climax_target_in_details(self):
-        """Volume climax should have retracement_target in details."""
+    def test_volume_climax_target_wired(self):
+        """Volume climax should wire retracement target into target_price."""
         result = self.detector.detect(REVERSAL_PASS_VOLUME_CLIMAX)
         assert result.detected is True
-        assert result.target_price is None
-        assert result.details["retracement_target"] is not None
+        assert result.target_price is not None
+        assert result.target_price == result.details["retracement_target"]
 
     def test_retracement_target_is_50pct(self):
         """Retracement target should be the midpoint of the run (50% retracement)."""
@@ -376,22 +416,80 @@ class TestReversalRetracementTarget:
 
 
 class TestReversalStopBuffer:
-    """Tests for the 1% stop buffer."""
+    """Tests for the price-adaptive stop buffer above pattern high."""
 
-    def test_stop_buffer_is_1pct(self):
-        """Stop buffer should be 1% of HOD (reduced from 2%)."""
+    def test_stop_buffer_is_2_cents_on_low_price(self):
+        """On sub-$4 stocks, 2c wins over 0.5% of price."""
         detector = ReversalPatternDetector()
         result = detector.detect(REVERSAL_PASS_SHOOTING_STAR)
         assert result.detected is True
 
-        # HOD from last 10 bars
-        df = REVERSAL_PASS_SHOOTING_STAR.copy().reset_index(drop=True)
-        recent = df.tail(10) if len(df) > 10 else df
-        hod = recent["high"].max()
+        pattern_high = REVERSAL_PASS_SHOOTING_STAR.iloc[-1]["high"]
+        # 2c > 0.5% of $1.40 (0.7c), so 2c wins
+        expected_stop = pattern_high + 0.02
+        assert result.stop_price == pytest.approx(expected_stop, abs=0.001)
 
-        expected_buffer = max(hod * 0.01, 0.05)  # 1% or 5 cents min
-        expected_stop = hod + expected_buffer
-        assert result.stop_price == pytest.approx(expected_stop, abs=0.01)
+    def test_stop_buffer_scales_with_price(self):
+        """On higher-priced stocks, 0.5% of price wins over 2c."""
+        detector = ReversalPatternDetector()
+        # Manually test the calculation: at $10 pattern_high,
+        # 0.5% = 5c > 2c, so buffer should be 5c
+        stop = detector._calculate_stop(None, "above", pattern_high=10.00)
+        assert stop == pytest.approx(10.05, abs=0.001)
+
+    def test_stop_buffer_config_keys(self):
+        """Config has both buffer keys."""
+        detector = ReversalPatternDetector()
+        assert detector.config["short_stop_buffer_cents"] == 2
+        assert detector.config["short_stop_min_pct"] == 0.5
+
+
+class TestReversalTargetCap:
+    """Tests for R:R target cap."""
+
+    def setup_method(self):
+        self.detector = ReversalPatternDetector()
+
+    def test_target_capped_at_max_r_multiple(self):
+        """Target distance should not exceed max_target_r_multiple × risk."""
+        result = self.detector.detect(REVERSAL_PASS_SHOOTING_STAR_WIDE_SESSION)
+        assert result.detected is True
+
+        risk = result.stop_price - result.entry_price
+        reward = result.entry_price - result.target_price
+        rr = reward / risk
+        assert rr <= 8.0 + 0.01  # max_target_r_multiple default
+
+    def test_default_max_target_r_multiple(self):
+        """Default max_target_r_multiple should be 8.0."""
+        assert self.detector.config["max_target_r_multiple"] == 8.0
+
+    def test_uncapped_target_below_cap(self):
+        """When natural R:R < cap, target is unchanged."""
+        result = self.detector.detect(REVERSAL_PASS_SHOOTING_STAR)
+        assert result.detected is True
+
+        # Verify target equals raw retracement (not capped)
+        run_low = result.details["run_low"]
+        run_high = result.details["run_high"]
+        raw_target = run_high - (run_high - run_low) * 0.50
+        assert result.target_price == pytest.approx(raw_target, abs=0.01)
+
+
+class TestReversalSessionWideTarget:
+    """Tests for session-wide target calculation."""
+
+    def setup_method(self):
+        self.detector = ReversalPatternDetector()
+
+    def test_session_wide_target_uses_full_range(self):
+        """Target uses session-wide low, not 10-bar window low."""
+        result = self.detector.detect(REVERSAL_PASS_SHOOTING_STAR_WIDE_SESSION)
+        assert result.detected is True
+        # Session low is 0.75 (bar 0), not ~1.22 (10-bar window low)
+        assert result.details["run_low"] == pytest.approx(0.75, abs=0.01)
+        # Target should be below entry
+        assert result.target_price < result.entry_price
 
 
 if __name__ == "__main__":

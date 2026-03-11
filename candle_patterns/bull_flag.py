@@ -6,10 +6,10 @@ Classic momentum continuation pattern.
 
 Pattern Structure:
 1. The Pole: Strong vertical move (15%+ gain, 3-10 candles)
-2. The Flag: Tight consolidation with declining volume (1-3 candles, 10-25% retracement)
+2. The Flag: Tight consolidation with declining volume (1-3 candles, 13-25% retracement)
 3. Entry: Break above flag resistance (conservative)
 
-Note: Prior moves <15% with shallow pullbacks are handled by Micro Pullback pattern.
+Note: Shallow pullbacks (<12%) are handled by Micro Pullback pattern.
 
 Example:
            /\\
@@ -47,7 +47,7 @@ class BullFlag(PatternDetector):
             # The Flag (Tight Consolidation) - 1-3 candles for quick resolution
             "min_flag_candles": 1,  # Min 1 candle in flag
             "max_flag_candles": 3,  # Max 3 candles (tight flag)
-            "min_pullback_pct": 10.0,  # 10-25% retracement of pole
+            "min_pullback_pct": 13.0,  # 13-25% retracement (MicroPullback covers <12%)
             "max_pullback_pct": 20.0,
             "volume_declining": True,  # Volume must decrease in flag
 

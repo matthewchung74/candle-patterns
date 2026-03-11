@@ -202,24 +202,24 @@ MP_FAIL_BELOW_MIN_PRIOR = _make_bars([
 
 
 # -----------------------------------------------------------------------------
-# MP_FAIL_ABOVE_MAX_PRIOR: Prior move at 15.2% (above 15% maximum)
-# Tests: max_prior_move_pct = 15.0
+# MP_FAIL_ABOVE_MAX_PRIOR: Prior move at 25.5% (above 25% maximum)
+# Tests: max_prior_move_pct = 25.0
 # Should route to Bull Flag instead
-# Note: Even smallest valid 2-bar window must have >15% move
+# Note: Even smallest valid 2-bar window must have >25% move
 # -----------------------------------------------------------------------------
 MP_FAIL_ABOVE_MAX_PRIOR = _make_bars([
-    # Surge: Make even 2-bar window have 15.2% move
-    # bars 1-2: low = 10.00, high = 11.52 → 15.2%
+    # Surge: Make even 2-bar window have 25.5% move
+    # bars 1-2: low = 10.00, high = 12.55 → 25.5%
     (10.00, 10.05, 10.00, 10.02, 200000),  # flat bar
     (10.02, 10.10, 10.00, 10.08, 220000),  # bar 1: low = 10.00
-    (10.08, 11.52, 10.05, 11.50, 280000),  # bar 2: high = 11.52, move = 15.2% (swing high)
+    (10.08, 12.55, 10.05, 12.50, 280000),  # bar 2: high = 12.55, move = 25.5% (swing high)
 
     # Shallow pullback
-    (11.50, 11.51, 11.00, 11.05, 100000),  # red
-    (11.05, 11.08, 10.98, 11.02, 90000),   # red
+    (12.50, 12.51, 12.00, 12.05, 100000),  # red
+    (12.05, 12.08, 11.98, 12.02, 90000),   # red
 
     # Entry attempt
-    (11.02, 11.40, 11.00, 11.35, 220000),  # green
+    (12.02, 12.40, 12.00, 12.35, 220000),  # green
 ])
 
 
