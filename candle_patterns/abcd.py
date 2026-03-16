@@ -79,6 +79,7 @@ class ABCD(PatternDetector):
         bars: pd.DataFrame,
         vwap: Optional[pd.Series] = None,
         macd: Optional[pd.DataFrame] = None,
+        prev_close: Optional[float] = None,
     ) -> PatternResult:
         """
         Detect ABCD pattern in the given bars.

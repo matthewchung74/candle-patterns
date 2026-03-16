@@ -93,6 +93,7 @@ class ReversalPatternDetector(PatternDetector):
         bars: pd.DataFrame,
         vwap: Optional[pd.Series] = None,
         macd: Optional[pd.DataFrame] = None,
+        prev_close: Optional[float] = None,
     ) -> PatternResult:
         """
         Detect reversal pattern in the given bars.
@@ -120,40 +121,61 @@ class ReversalPatternDetector(PatternDetector):
             return self.not_detected(f"Insufficient bars: {n}")
 
         # Step 1: Check if stock is extended
-        open_price = df.iloc[0]["open"]
+        # Use prev_close if available; fall back to first bar's open
+        reference_price = prev_close if prev_close is not None else df.iloc[0]["open"]
         current_price = df.iloc[-1]["close"]
         intraday_low = df["low"].min()
         intraday_high = df["high"].max()
 
-        extension_from_open = self.calculate_move_pct(open_price, current_price)
+        extension_from_ref = self.calculate_move_pct(reference_price, current_price)
         extension_from_low = self.calculate_move_pct(intraday_low, intraday_high)
 
-        if extension_from_open < self.config["min_extension_from_open_pct"]:
+        # OR gate: pass if EITHER check meets threshold
+        ref_label = "prev_close" if prev_close is not None else "open"
+        ref_passes = extension_from_ref >= self.config["min_extension_from_open_pct"]
+        low_passes = extension_from_low >= self.config["min_extension_from_low_pct"]
+
+        if not (ref_passes or low_passes):
             return self.not_detected(
-                f"Not extended: {extension_from_open:.1f}% from open < {self.config['min_extension_from_open_pct']}%"
+                f"Not extended: {extension_from_ref:.1f}% from {ref_label} < "
+                f"{self.config['min_extension_from_open_pct']}% AND "
+                f"{extension_from_low:.1f}% low-to-high < "
+                f"{self.config['min_extension_from_low_pct']}%"
             )
 
         # Step 2: Check each reversal pattern (in order of strength)
         # Returns first match - patterns are mutually exclusive
 
+        # Extension observability for detected results
+        _ext_details = {
+            "prev_close": prev_close,
+            "reference_price": reference_price,
+            "extension_from_ref": round(extension_from_ref, 2),
+            "extension_from_low": round(extension_from_low, 2),
+        }
+
         # Try evening star first (strongest, 3-bar pattern)
         evening_star_result = self._check_evening_star(df, vwap, macd)
         if evening_star_result.detected:
+            evening_star_result.details.update(_ext_details)
             return evening_star_result
 
         # Try volume climax (strong signal)
         volume_climax_result = self._check_volume_climax(df, vwap, macd)
         if volume_climax_result.detected:
+            volume_climax_result.details.update(_ext_details)
             return volume_climax_result
 
         # Try shooting star
         shooting_star_result = self._check_shooting_star(df, vwap, macd)
         if shooting_star_result.detected:
+            shooting_star_result.details.update(_ext_details)
             return shooting_star_result
 
         # Try bearish engulfing
         bearish_engulf_result = self._check_bearish_engulfing(df, vwap, macd)
         if bearish_engulf_result.detected:
+            bearish_engulf_result.details.update(_ext_details)
             return bearish_engulf_result
 
         return self.not_detected("No reversal pattern detected")

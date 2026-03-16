@@ -125,6 +125,7 @@ class PatternDetector(ABC):
         bars: pd.DataFrame,
         vwap: Optional[pd.Series] = None,
         macd: Optional[pd.DataFrame] = None,
+        prev_close: Optional[float] = None,
     ) -> PatternResult:
         """
         Detect pattern in the given bars.
@@ -133,6 +134,7 @@ class PatternDetector(ABC):
             bars: DataFrame with OHLCV data
             vwap: Optional VWAP series for confirmation
             macd: Optional MACD DataFrame with 'macd', 'signal', 'histogram'
+            prev_close: Optional previous day's close price (for gap/extension calc)
 
         Returns:
             PatternResult with detection details

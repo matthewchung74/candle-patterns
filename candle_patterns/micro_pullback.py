@@ -86,6 +86,7 @@ class MicroPullback(PatternDetector):
         bars: pd.DataFrame,
         vwap: Optional[pd.Series] = None,
         macd: Optional[pd.DataFrame] = None,
+        prev_close: Optional[float] = None,
     ) -> PatternResult:
         """
         Detect Micro Pullback pattern using flexible range-based logic.

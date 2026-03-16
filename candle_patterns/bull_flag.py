@@ -83,6 +83,7 @@ class BullFlag(PatternDetector):
         bars: pd.DataFrame,
         vwap: Optional[pd.Series] = None,
         macd: Optional[pd.DataFrame] = None,
+        prev_close: Optional[float] = None,
     ) -> PatternResult:
         """
         Detect Bull Flag pattern.

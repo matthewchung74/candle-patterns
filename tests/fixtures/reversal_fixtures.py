@@ -55,18 +55,20 @@ REVERSAL_PASS_SHOOTING_STAR = _make_bars([
 
 # FAIL: Shooting star but no prior uptrend
 REVERSAL_FAIL_SHOOTING_STAR_NO_UPTREND = _make_bars([
-    # Sideways/down movement (not extended from open)
+    # Sideways/down movement — no uptrend before shooting star
+    # Extension passes via low-to-high OR gate (0.98→1.26 = 28.6% >= 25%)
+    # but prior 3 bars (indices 6,7,8) have <2 green → "No prior uptrend"
     {"open": 1.00, "high": 1.02, "low": 0.98, "close": 1.01, "volume": 8000},
     {"open": 1.20, "high": 1.22, "low": 1.15, "close": 1.16, "volume": 10000},
     {"open": 1.16, "high": 1.18, "low": 1.14, "close": 1.15, "volume": 12000},
     {"open": 1.15, "high": 1.17, "low": 1.12, "close": 1.14, "volume": 15000},
     {"open": 1.14, "high": 1.16, "low": 1.11, "close": 1.12, "volume": 18000},
     {"open": 1.12, "high": 1.14, "low": 1.10, "close": 1.11, "volume": 20000},
-    # Small bounce
-    {"open": 1.11, "high": 1.14, "low": 1.10, "close": 1.13, "volume": 12000},
-    {"open": 1.13, "high": 1.15, "low": 1.12, "close": 1.14, "volume": 11000},
-    {"open": 1.14, "high": 1.16, "low": 1.13, "close": 1.15, "volume": 10000},
-    # Shooting star shape but no uptrend (also not extended - close 1.16 vs open 1.00 = 16%)
+    # 3 bars before star: mostly red (only 1 green → fails green_count < 2 check)
+    {"open": 1.13, "high": 1.14, "low": 1.10, "close": 1.11, "volume": 12000},  # red
+    {"open": 1.11, "high": 1.15, "low": 1.10, "close": 1.13, "volume": 11000},  # green (1 of 3)
+    {"open": 1.15, "high": 1.16, "low": 1.13, "close": 1.14, "volume": 10000},  # red
+    # Shooting star shape but no prior uptrend
     {"open": 1.15, "high": 1.26, "low": 1.14, "close": 1.16, "volume": 25000},
 ])
 
@@ -352,7 +354,7 @@ REVERSAL_FAIL_STALE_HOD = _make_bars([
 
 # FAIL: Not extended enough from open (<20%)
 REVERSAL_FAIL_NOT_EXTENDED = _make_bars([
-    # Only 15% extension from open
+    # Only 15% extension from open AND <25% low-to-high (both OR gates fail)
     {"open": 1.00, "high": 1.02, "low": 0.99, "close": 1.01, "volume": 8000},
     {"open": 1.01, "high": 1.03, "low": 1.00, "close": 1.02, "volume": 10000},
     {"open": 1.02, "high": 1.04, "low": 1.01, "close": 1.03, "volume": 12000},
@@ -362,8 +364,8 @@ REVERSAL_FAIL_NOT_EXTENDED = _make_bars([
     {"open": 1.09, "high": 1.12, "low": 1.08, "close": 1.11, "volume": 18000},
     {"open": 1.11, "high": 1.14, "low": 1.10, "close": 1.13, "volume": 16000},
     {"open": 1.13, "high": 1.15, "low": 1.12, "close": 1.14, "volume": 14000},
-    # Shooting star shape but only 15% from open (1.15/1.00 = 15%)
-    {"open": 1.14, "high": 1.24, "low": 1.13, "close": 1.15, "volume": 25000},
+    # Shooting star shape but only 15% from open (1.15/1.00) AND 23% low-to-high (1.22/0.99)
+    {"open": 1.14, "high": 1.22, "low": 1.13, "close": 1.15, "volume": 25000},
 ])
 
 

@@ -243,11 +243,13 @@ class TestReversalPatternDetection:
     # =========================================================================
 
     def test_not_extended_rejected(self):
-        """Test that stocks not extended enough are rejected."""
+        """Test that stocks not extended enough are rejected (both OR gates fail)."""
         result = self.detector.detect(REVERSAL_FAIL_NOT_EXTENDED)
 
         assert result.detected is False
-        assert "extended" in result.reason.lower() or "not extended" in result.reason.lower()
+        assert "not extended" in result.reason.lower()
+        # Verify both gates are mentioned in the reason (OR gate message)
+        assert "AND" in result.reason
 
     # =========================================================================
     # PATTERN PRIORITY TESTS
@@ -297,17 +299,18 @@ class TestReversalPatternConfig:
 
     def test_relaxed_extension_detects_more(self):
         """Test that relaxed extension threshold detects more patterns."""
-        # With default 20% extension, should fail
+        # With default 20%/25% extension, should fail both OR gates
         default_detector = ReversalPatternDetector()
         result1 = default_detector.detect(REVERSAL_FAIL_NOT_EXTENDED)
         assert result1.detected is False
 
-        # With relaxed 10% extension, might detect
+        # With relaxed 10% from-ref threshold, ref gate now passes (15% >= 10%)
         relaxed_detector = ReversalPatternDetector({
             "min_extension_from_open_pct": 10.0,
         })
         result2 = relaxed_detector.detect(REVERSAL_FAIL_NOT_EXTENDED)
-        # May or may not detect depending on other pattern criteria
+        # Should now detect since 15% from open >= 10% relaxed threshold
+        assert result2.detected is True
 
 
 class TestReversalPatternStopCalculation:
