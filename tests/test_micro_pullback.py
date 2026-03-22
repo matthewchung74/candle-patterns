@@ -292,5 +292,82 @@ class TestMicroPullbackConfig:
         assert custom.config["max_prior_move_pct"] == 25.0
 
 
+class TestMicroPullbackVCR:
+    """Tests for Volume Collapse Ratio (VCR) gate."""
+
+    def test_vcr_disabled_by_default(self):
+        """Default config (max_volume_collapse_ratio=0.0) never rejects on VCR."""
+        detector = MicroPullback()
+        assert detector.config["max_volume_collapse_ratio"] == 0.0
+
+        # Use a fixture with heavy pullback volume — VCR gate should NOT fire
+        # because default is 0 (disabled). The avg volume gate may still fire,
+        # so disable it to isolate VCR behavior.
+        detector_no_avg = MicroPullback({"max_pullback_surge_volume_ratio": 0})
+        result = detector_no_avg.detect(MP_FAIL_PULLBACK_VOLUME_TOO_HEAVY)
+        # With avg gate disabled and VCR disabled, pattern should pass
+        assert result.detected is True
+
+    def test_vcr_rejects_distribution(self):
+        """SER-like bars with high VCR + config 0.55 -> not detected."""
+        # SER pattern: peak surge vol 3M, first pullback bar 2M => VCR = 0.67
+        bars = _make_bars([
+            # Surge: 10% move with massive peak volume
+            (10.00, 10.35, 9.98, 10.30, 1_000_000),   # green
+            (10.30, 10.65, 10.28, 10.60, 2_000_000),   # green
+            (10.60, 11.02, 10.58, 11.00, 3_000_000),   # green, peak surge = 3M
+
+            # Pullback: volume stays high (distribution)
+            (11.00, 11.01, 10.50, 10.55, 2_000_000),   # red, peak pullback = 2M
+            (10.55, 10.58, 10.14, 10.18, 1_800_000),   # red
+
+            # Entry
+            (10.18, 10.50, 10.15, 10.45, 1_500_000),   # green
+        ])
+
+        detector = MicroPullback({
+            "max_volume_collapse_ratio": 0.55,
+            "max_pullback_surge_volume_ratio": 0,  # Disable avg gate to isolate VCR
+            "require_above_vwap": False,
+            "require_macd_positive": False,
+        })
+        result = detector.detect(bars)
+        assert result.detected is False
+        assert "collapse ratio" in result.reason.lower()
+
+    def test_vcr_passes_capitulation(self):
+        """ARTL-like bars with low VCR + config 0.55 -> detected."""
+        # ARTL pattern: peak surge vol 531k, first pullback bar 193k => VCR = 0.36
+        bars = _make_bars([
+            # Surge: 10% move with strong volume
+            (10.00, 10.35, 9.98, 10.30, 300_000),   # green
+            (10.30, 10.65, 10.28, 10.60, 400_000),   # green
+            (10.60, 11.02, 10.58, 11.00, 531_000),   # green, peak surge = 531k
+
+            # Pullback: volume collapses (capitulation — healthy)
+            (11.00, 11.01, 10.50, 10.55, 193_000),   # red, peak pullback = 193k
+            (10.55, 10.58, 10.14, 10.18, 150_000),   # red
+
+            # Entry
+            (10.18, 10.50, 10.15, 10.45, 250_000),   # green
+        ])
+
+        detector = MicroPullback({
+            "max_volume_collapse_ratio": 0.55,
+            "max_pullback_surge_volume_ratio": 0,  # Disable avg gate to isolate VCR
+            "require_above_vwap": False,
+            "require_macd_positive": False,
+        })
+        result = detector.detect(bars)
+        assert result.detected is True
+
+    def test_vcr_in_details(self):
+        """volume_collapse_ratio present in PatternResult.details."""
+        result = MicroPullback().detect(MP_PASS_VALID)
+        assert result.detected is True
+        assert "volume_collapse_ratio" in result.details
+        assert isinstance(result.details["volume_collapse_ratio"], float)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

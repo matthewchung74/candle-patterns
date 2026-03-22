@@ -74,11 +74,11 @@ if result.detected:
 
 ### Micro Pullback
 
-A shallow retracement after a 5-15% move. Moves >15% are routed to Bull Flag instead.
+A shallow retracement after a 5-25% move. Moves >25% are too extended for this pattern.
 
 ```
 [GREEN][GREEN][GREEN][GREEN][red][red][GREEN→ENTRY]
-     Prior Move (5-15%)      Pullback   New High
+     Prior Move (5-25%)      Pullback   Bounce
 ```
 
 **Hard gates** (pattern rejected if not met):
@@ -89,7 +89,7 @@ A shallow retracement after a 5-15% move. Moves >15% are routed to Bull Flag ins
 ```python
 detector = MicroPullback({
     "min_prior_move_pct": 5.0,       # Min 5% move before pullback
-    "max_prior_move_pct": 15.0,      # Max 15% (larger moves -> Bull Flag)
+    "max_prior_move_pct": 25.0,      # Max 25% (too extended beyond this)
     "min_green_candles_prior": 2,     # At least 2 green candles in prior move
     "max_pullback_pct": 12.0,        # Max 12% retracement
     "max_pullback_candles": 3,        # Max 3 candles in pullback (micro = tight)
@@ -99,7 +99,9 @@ detector = MicroPullback({
     "stop_buffer_min_cents": 3,       # Minimum 3 cents buffer
     "stop_buffer_atr_multiplier": 1.5, # ATR(14) × 1.5 floor (adapts to volatility)
     "stop_buffer_atr_period": 14,     # ATR lookback period
-    "min_rr_for_setup": 1.5,          # Minimum 1.5:1 R:R required
+    "max_pullback_surge_volume_ratio": 0.75,  # Pullback avg vol < 75% of surge avg
+    "max_volume_collapse_ratio": 0.0, # VCR gate: peak pullback / peak surge (0=disabled)
+    "min_rr_for_setup": 1.2,          # Minimum 1.2:1 R:R required
 })
 ```
 
@@ -128,8 +130,9 @@ detector = BullFlag({
     "max_pole_candles": 10,
     "min_flag_candles": 1,       # 1-3 candles in flag
     "max_flag_candles": 3,
-    "min_pullback_pct": 10.0,    # 10-25% retracement of pole
-    "max_pullback_pct": 25.0,
+    "min_pullback_pct": 10.0,    # 10-20% retracement of pole
+    "max_pullback_pct": 20.0,
+    "max_flag_pole_volume_ratio": 0.75,  # Flag avg vol <= 75% of pole avg
     "volume_declining": True,    # Volume must decrease in flag
     "require_above_vwap": True,  # HARD GATE: must be above VWAP
     "require_macd_positive": True, # HARD GATE: MACD histogram > 0

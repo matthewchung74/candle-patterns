@@ -76,6 +76,11 @@ class MicroPullback(PatternDetector):
             # Set to 0 to disable.
             "max_pullback_surge_volume_ratio": 0.75,
 
+            # Volume collapse ratio: peak pullback bar volume / peak surge bar volume.
+            # Low VCR = capitulation (healthy). High VCR = distribution (avoid).
+            # Set to 0 to disable. Log-only when set to a value > 1.0.
+            "max_volume_collapse_ratio": 0.0,  # Disabled by default
+
             # Quality filter (lowered from 2.0: with 3% stop floor, 5-6% micro-surges
             # on $10+ stocks produce estimated R:R ~1.5. Gate's bracket R:R is the real check.)
             "min_rr_for_setup": 1.2,
@@ -302,6 +307,19 @@ class MicroPullback(PatternDetector):
                     f"(pullback avg {pullback_volume:,.0f} vs surge avg {surge_volume:,.0f})"
                 )
 
+        # Step 8b: Volume collapse ratio (peak-to-peak, not average)
+        max_vcr = self.config.get("max_volume_collapse_ratio", 0.0)
+        peak_surge_vol = df.iloc[surge_start_idx:surge_end_idx + 1]["volume"].max()
+        vcr_end = min(pullback_start_idx + 2, pullback_end_idx + 1)
+        peak_pullback_vol = df.iloc[pullback_start_idx:vcr_end]["volume"].max() if vcr_end > pullback_start_idx else 0
+        volume_collapse_ratio = (peak_pullback_vol / peak_surge_vol) if peak_surge_vol > 0 else 0.0
+
+        if 0 < max_vcr <= 1.0 and volume_collapse_ratio > max_vcr:
+            return self.not_detected(
+                f"Volume collapse ratio {volume_collapse_ratio:.2f} > {max_vcr} "
+                f"(peak pullback {peak_pullback_vol:,.0f} vs peak surge {peak_surge_vol:,.0f})"
+            )
+
         volume_declining = pullback_volume < surge_volume
 
         # Step 9: Confirmations (advisory)
@@ -391,6 +409,7 @@ class MicroPullback(PatternDetector):
                 "surge_volume_avg": round(surge_volume),
                 "pullback_volume_avg": round(pullback_volume),
                 "pullback_volume_ratio": round(pullback_volume / surge_volume, 2) if surge_volume > 0 else 0,
+                "volume_collapse_ratio": round(volume_collapse_ratio, 2),
                 "volume_declining": volume_declining,
                 "atr": round(atr_value, 4) if atr_value is not None else None,
                 "stop_buffer": round(stop_buffer, 4),
