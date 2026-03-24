@@ -4,7 +4,7 @@ Tests for Candle Patterns Library
 
 Core pattern tests are in dedicated files:
 - test_micro_pullback.py - Micro Pullback pattern tests
-- test_bull_flag.py - Bull Flag pattern tests
+- test_micro_pullback.py - Micro Pullback VCR tests
 
 This file contains:
 - Exit signal tests (topping tail, stop hit, volume decline, jackknife, MACD cross, VWAP cross)

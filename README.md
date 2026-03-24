@@ -176,7 +176,6 @@ print(result.macd_slope_up)  # True/False/None (None if < 35 bars)
 ### Volume Confirmation
 
 - **Micro Pullback**: Pullback volume must be < surge volume
-- **Bull Flag**: Volume must decline during flag consolidation (10% leeway)
 ```python
 print(result.volume_confirmation)  # True if volume confirms pattern
 ```
@@ -186,8 +185,7 @@ print(result.volume_confirmation)  # True if volume confirms pattern
 Confidence is a 0.0-1.0 score returned by each detector. It is advisory only; gating is handled by the consumer.
 
 Standard bases/caps:
-- **Micro Pullback / Bull Flag**: base 0.65, cap 0.90
-- **ABCD**: formula-based (0.85 adjusted by retracement and CD/AB match), range 0.50-0.95
+- **Micro Pullback**: base 0.65, cap 0.90
 - **Reversal patterns**: base from pattern weight (normalized to ~0.65), cap 0.90
 
 Boosts by pattern:
@@ -199,24 +197,17 @@ Boosts by pattern:
 | Micro Pullback | macd_positive +0.08 | MACD histogram > 0 |
 | Micro Pullback | macd_slope_up +0.04 | MACD line rising vs 3 bars ago |
 | Micro Pullback | tight_pullback +0.06 | Pullback < 5% |
-| Bull Flag | volume_declining +0.10 | Flag volume declining |
-| Bull Flag | above_vwap +0.08 | Price above VWAP |
-| Bull Flag | above_9ema +0.06 | Price above 9 EMA |
-| Bull Flag | macd_positive +0.08 | MACD histogram > 0 |
-| Bull Flag | macd_slope_up +0.04 | MACD line rising vs 3 bars ago |
-| ABCD | ideal_retracement | Higher confidence near 61.8% BC retracement |
-| ABCD | cd_ab_match | Higher confidence when CD ~ AB |
 | Reversal | above_vwap +0.06 | Room to fall to VWAP |
 | Reversal | macd_weakening +0.06 | MACD histogram declining |
 | Volume Climax | volume_bonus +0.05 | Extra confidence for climax signal |
 
 ## R:R Enforcement
 
-Long patterns (Micro Pullback, Bull Flag) enforce a minimum 2:1 R:R via `min_rr_for_setup` in their config. ABCD uses its own formula. Reversal (short) patterns compute a 50% retracement target and let the downstream gate enforce the 2:1 minimum on the actual R:R.
+Micro Pullback enforces a minimum R:R via `min_rr_for_setup` (default 1.2). Reversal (short) patterns compute a 50% retracement target and let the downstream gate enforce the 2:1 minimum on the actual R:R.
 
 ## Stale Data Guard
 
-Micro Pullback and Bull Flag silently reject patterns where the suggested entry price is >5% away from the current close (`max_entry_deviation_pct: 5.0`). This prevents acting on stale pattern calculations.
+Micro Pullback silently rejects patterns where the suggested entry price is >5% away from the current close (`max_entry_deviation_pct: 5.0`). This prevents acting on stale pattern calculations.
 
 ## Trailing Stop
 

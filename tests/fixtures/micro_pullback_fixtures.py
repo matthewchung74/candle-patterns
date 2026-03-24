@@ -3,7 +3,7 @@ Micro Pullback Test Fixtures
 ============================
 
 Comprehensive limit/boundary testing for the NEW Micro Pullback rules:
-- Prior move: 5-15% (>15% routes to Bull Flag)
+- Prior move: 5-25%
 - Pullback: ≤12% retracement
 - Duration: ≤2 candles
 - Entry: First green candle after pullback (aggressive)
@@ -204,7 +204,7 @@ MP_FAIL_BELOW_MIN_PRIOR = _make_bars([
 # -----------------------------------------------------------------------------
 # MP_FAIL_ABOVE_MAX_PRIOR: Prior move at 25.5% (above 25% maximum)
 # Tests: max_prior_move_pct = 25.0
-# Should route to Bull Flag instead
+# Too extended for micro pullback
 # Note: Even smallest valid 2-bar window must have >25% move
 # -----------------------------------------------------------------------------
 MP_FAIL_ABOVE_MAX_PRIOR = _make_bars([

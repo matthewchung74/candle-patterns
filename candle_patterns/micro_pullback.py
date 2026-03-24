@@ -12,7 +12,7 @@ Pattern Structure:
    - Max duration: 6 candles
 3. Entry trigger: First green candle after pullback (aggressive, Ross's style)
 
-Note: Prior moves >25% are not handled (too extended). BullFlag handles deeper pullbacks (13-25%).
+Note: Prior moves >25% are not handled (too extended for micro pullback).
 
 Detection uses flexible range-based logic:
 - Finds swing high in lookback window
@@ -50,7 +50,7 @@ class MicroPullback(PatternDetector):
             "max_prior_move_pct": 25.0,  # Max 25% (shallow pullbacks on big moves)
             "min_green_candles_prior": 2,  # At least 2 candles, >50% green
 
-            # Shallow pullback limits (tighter than Bull Flag)
+            # Shallow pullback limits
             "max_pullback_pct": 12.0,  # Max 12% retracement (shallow only)
             "max_pullback_candles": 3,  # Max 3 candles in pullback (micro = tight)
 
@@ -204,11 +204,11 @@ class MicroPullback(PatternDetector):
         surge_high = surge_window["high"].max()
         prior_move_pct = self.calculate_move_pct(surge_low, surge_high)
 
-        # Check max prior move (larger moves should use Bull Flag)
+        # Check max prior move (too extended for micro pullback)
         max_prior_move = self.config.get("max_prior_move_pct", 15.0)
         if prior_move_pct > max_prior_move:
             return self.not_detected(
-                f"Prior move too large: {prior_move_pct:.1f}% > {max_prior_move}% (use Bull Flag)"
+                f"Prior move too large: {prior_move_pct:.1f}% > {max_prior_move}%"
             )
 
         # Get pullback high (pullback_window, pullback_low, pullback_pct already calculated above)
