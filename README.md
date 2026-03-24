@@ -12,8 +12,6 @@ This library detects common momentum day trading patterns:
 
 **Long patterns:**
 - **Micro Pullback** - Shallow retracement after a strong move
-- **Bull Flag** - Consolidation pattern with declining volume
-- **ABCD** - Harmonic pattern with Fibonacci retracements
 
 **Short (reversal) patterns:**
 - **Shooting Star** - Long upper wick rejection at highs
@@ -41,7 +39,7 @@ pip install -e .
 
 ```python
 import pandas as pd
-from candle_patterns import MicroPullback, BullFlag, ABCD, ReversalPatternDetector
+from candle_patterns import MicroPullback, ReversalPatternDetector
 
 # Your OHLCV data (newest bar last)
 bars = pd.DataFrame({
@@ -105,43 +103,6 @@ detector = MicroPullback({
 })
 ```
 
-### Bull Flag
-
-Classic continuation pattern: strong pole (15%+ move) followed by tight 1-3 candle consolidation with declining volume.
-
-```
-       ___
-      /   \___  <- Flag (consolidation)
-     /        \___
-    /             \
-   /               → BREAKOUT
-  / <- Pole
-```
-
-**Hard gates** (pattern rejected if not met):
-- Price must be above VWAP (`require_above_vwap: True`)
-- MACD histogram must be positive (`require_macd_positive: True`)
-
-**Configuration:**
-```python
-detector = BullFlag({
-    "min_pole_move_pct": 15.0,   # Min 15% move in pole
-    "min_pole_candles": 3,       # 3-10 candles in pole
-    "max_pole_candles": 10,
-    "min_flag_candles": 1,       # 1-3 candles in flag
-    "max_flag_candles": 3,
-    "min_pullback_pct": 10.0,    # 10-20% retracement of pole
-    "max_pullback_pct": 20.0,
-    "max_flag_pole_volume_ratio": 0.75,  # Flag avg vol <= 75% of pole avg
-    "volume_declining": True,    # Volume must decrease in flag
-    "require_above_vwap": True,  # HARD GATE: must be above VWAP
-    "require_macd_positive": True, # HARD GATE: MACD histogram > 0
-    "stop_buffer_pct": 0.5,      # 0.5% below flag low
-    "stop_buffer_min_cents": 5,  # Minimum 5 cents buffer
-    "min_rr_for_setup": 2.0,     # Minimum 2:1 R:R required
-})
-```
-
 ### Reversal Patterns (Short Side)
 
 Detects bearish reversal patterns on extended stocks for short entry. Requires the stock to be up 20%+ from open.
@@ -193,44 +154,6 @@ detector = ReversalPatternDetector({
     "stop_buffer_pct": 1.0,              # Stop 1% above recent HOD
     "stop_buffer_min_cents": 5,
 })
-```
-
-### ABCD (Harmonic)
-
-Bullish harmonic pattern with Fibonacci retracements.
-
-```
-Bullish ABCD:
-    A - Swing low (start of impulse)
-    B - Swing high (end of AB leg)
-    C - Higher low (BC retracement of 38.2%-78.6% of AB)
-    D - Projected target where CD ≈ AB
-
-    B         D
-   / \       /
-  /   \   C /
- /     \ / \
-A       v
-
-Entry at D completion, stop below C
-```
-
-**Configuration:**
-```python
-detector = ABCD({
-    "min_bc_retracement": 0.382,  # 38.2% min (Fibonacci)
-    "max_bc_retracement": 0.786,  # 78.6% max (Fibonacci)
-    "cd_ab_ratio_min": 0.75,      # CD must be at least 75% of AB
-    "cd_ab_ratio_max": 1.25,      # CD must be at most 125% of AB
-    "min_leg_pct": 1.0,           # Min 1% move for AB leg
-    "swing_lookback": 3,          # Bars to confirm swing points
-})
-
-result = detector.detect(bars)
-if result.detected:
-    print(f"Direction: {result.details['direction']}")
-    print(f"Projected D: ${result.details['projected_d']:.2f}")
-    print(f"BC Retracement: {result.details['bc_retracement']:.1%}")
 ```
 
 ## Confirmations

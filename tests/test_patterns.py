@@ -15,7 +15,7 @@ Run with: pytest tests/test_patterns.py -v
 
 import pytest
 import pandas as pd
-from candle_patterns import MicroPullback, BullFlag
+from candle_patterns import MicroPullback
 from tests.fixtures.exit_signal_fixtures import (
     # Topping Tail
     TOPPING_TAIL_VALID,

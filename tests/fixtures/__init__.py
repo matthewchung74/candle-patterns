@@ -24,26 +24,6 @@ from .micro_pullback_fixtures import (
     MP_FAIL_LAST_BAR_RED,
     MP_FAIL_RR_TOO_LOW,
 )
-from .bull_flag_fixtures import (
-    # PASS cases
-    BF_PASS_VALID,
-    BF_PASS_MIN_POLE_MOVE,
-    BF_PASS_MIN_POLE_CANDLES,
-    BF_PASS_MAX_FLAG_CANDLES,
-    BF_PASS_MIN_FLAG_CANDLE,
-    BF_PASS_MIN_PULLBACK,
-    BF_PASS_MAX_PULLBACK,
-    BF_PASS_MIN_RR,
-    # FAIL cases
-    BF_FAIL_POLE_TOO_WEAK,
-    BF_FAIL_POLE_TOO_SHORT,
-    BF_FAIL_FLAG_TOO_LONG,
-    BF_FAIL_PULLBACK_SHALLOW,
-    BF_FAIL_PULLBACK_TOO_DEEP,
-    BF_FAIL_FLAG_TOO_WIDE,
-    BF_FAIL_VOLUME_RISING,
-    BF_FAIL_NO_BREAKOUT,
-)
 from .exit_signal_fixtures import (
     # Topping Tail
     TOPPING_TAIL_VALID,
@@ -99,24 +79,6 @@ __all__ = [
     "MP_FAIL_GREEN_RATIO_LOW",
     "MP_FAIL_LAST_BAR_RED",
     "MP_FAIL_RR_TOO_LOW",
-    # BullFlag fixtures - PASS
-    "BF_PASS_VALID",
-    "BF_PASS_MIN_POLE_MOVE",
-    "BF_PASS_MIN_POLE_CANDLES",
-    "BF_PASS_MAX_FLAG_CANDLES",
-    "BF_PASS_MIN_FLAG_CANDLE",
-    "BF_PASS_MIN_PULLBACK",
-    "BF_PASS_MAX_PULLBACK",
-    "BF_PASS_MIN_RR",
-    # BullFlag fixtures - FAIL
-    "BF_FAIL_POLE_TOO_WEAK",
-    "BF_FAIL_POLE_TOO_SHORT",
-    "BF_FAIL_FLAG_TOO_LONG",
-    "BF_FAIL_PULLBACK_SHALLOW",
-    "BF_FAIL_PULLBACK_TOO_DEEP",
-    "BF_FAIL_FLAG_TOO_WIDE",
-    "BF_FAIL_VOLUME_RISING",
-    "BF_FAIL_NO_BREAKOUT",
     # Exit signal fixtures - Topping Tail
     "TOPPING_TAIL_VALID",
     "TOPPING_TAIL_WICK_TOO_SMALL",

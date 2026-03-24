@@ -3,12 +3,11 @@ Candle Patterns - Momentum Pattern Detection
 ======================================================
 
 Detects momentum day trading patterns:
-- Micro Pullback
-- Bull Flag
-- ABCD (Harmonic)
+- Micro Pullback (long)
+- Reversal patterns: ShootingStar, BearishEngulfing, EveningStar, VolumeClimax (short)
 
 Usage:
-    from candle_patterns import MicroPullback, BullFlag, ABCD
+    from candle_patterns import MicroPullback
 
     detector = MicroPullback()
     result = detector.detect(bars_df, vwap_series)
@@ -19,8 +18,6 @@ Usage:
 
 from .base import PatternResult, PatternDetector, ExitSignal
 from .micro_pullback import MicroPullback
-from .bull_flag import BullFlag
-from .abcd import ABCD
 from .reversal import ReversalPatternDetector
 
 # Trailing stop module exports
@@ -43,7 +40,5 @@ __all__ = [
     "TrailingStopResult",
     # Pattern detectors
     "MicroPullback",
-    "BullFlag",
-    "ABCD",
     "ReversalPatternDetector",
 ]
