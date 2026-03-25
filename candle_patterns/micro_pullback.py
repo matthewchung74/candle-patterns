@@ -383,6 +383,51 @@ class MicroPullback(PatternDetector):
 
         green_count = surge_window["is_green"].sum()
 
+        # VWAP bounce observability metrics (log-only, for future pattern validation)
+        vwap_rising_bars_10 = None
+        consolidation_range_pct = None
+        consolidation_bar_count = None
+        price_vwap_gap_pct = None
+        price_vwap_gap_pct_start = None
+
+        if vwap is not None and len(vwap) == n:
+            lookback = min(10, n - 1)
+            if lookback >= 10:
+                # Count strictly rising VWAP bars in last 10 (strict >, flat not counted)
+                vwap_tail = vwap.iloc[-(lookback + 1):]
+                vwap_rising_bars_10 = sum(
+                    1 for i in range(1, len(vwap_tail))
+                    if vwap_tail.iloc[i] > vwap_tail.iloc[i - 1]
+                )
+            # Price-VWAP gap at entry bar (denominator is close)
+            entry_vwap = vwap.iloc[-1]
+            if entry_vwap > 0:
+                price_vwap_gap_pct = round(
+                    (entry_candle["close"] - entry_vwap) / entry_candle["close"] * 100, 2
+                )
+            # Gap at start of VWAP lookback (for gap narrowing analysis)
+            start_idx = max(0, n - 1 - lookback)
+            start_vwap = vwap.iloc[start_idx]
+            start_close = df.iloc[start_idx]["close"]
+            if start_vwap > 0 and start_close > 0:
+                price_vwap_gap_pct_start = round(
+                    (start_close - start_vwap) / start_close * 100, 2
+                )
+
+        # Consolidation range over bars before surge start
+        min_pre_surge_bars = 3
+        if surge_start_idx >= min_pre_surge_bars:
+            pre_start = max(0, surge_start_idx - 10)
+            pre_surge_bars = df.iloc[pre_start:surge_start_idx]
+            consolidation_bar_count = len(pre_surge_bars)
+            range_high = pre_surge_bars["high"].max()
+            range_low = pre_surge_bars["low"].min()
+            avg_price = pre_surge_bars["close"].mean()
+            if avg_price > 0:
+                consolidation_range_pct = round(
+                    (range_high - range_low) / avg_price * 100, 2
+                )
+
         return PatternResult(
             detected=True,
             pattern_name="MicroPullback",
@@ -413,5 +458,11 @@ class MicroPullback(PatternDetector):
                 "volume_declining": volume_declining,
                 "atr": round(atr_value, 4) if atr_value is not None else None,
                 "stop_buffer": round(stop_buffer, 4),
+                # VWAP bounce observability (log-only)
+                "vwap_rising_bars_10": vwap_rising_bars_10,
+                "consolidation_range_pct": consolidation_range_pct,
+                "consolidation_bar_count": consolidation_bar_count,
+                "price_vwap_gap_pct": price_vwap_gap_pct,
+                "price_vwap_gap_pct_start": price_vwap_gap_pct_start,
             },
         )

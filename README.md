@@ -39,7 +39,7 @@ pip install -e .
 
 ```python
 import pandas as pd
-from candle_patterns import MicroPullback, ReversalPatternDetector
+from candle_patterns import MicroPullback, VwapBounce, ReversalPatternDetector
 
 # Your OHLCV data (newest bar last)
 bars = pd.DataFrame({
@@ -100,6 +100,51 @@ detector = MicroPullback({
     "max_pullback_surge_volume_ratio": 0.75,  # Pullback avg vol < 75% of surge avg
     "max_volume_collapse_ratio": 0.0, # VCR gate: peak pullback / peak surge (0=disabled)
     "min_rr_for_setup": 1.2,          # Minimum 1.2:1 R:R required
+})
+```
+
+### VWAP Bounce
+
+Consolidation entry pattern. Detects sustained buying pressure (rising VWAP) into a tight price range, enters near the bottom of the consolidation before the breakout.
+
+```
+[flat][flat][flat][flat][flat][GREEN→ENTRY]
+     Consolidation (VWAP rising)    Entry near low
+```
+
+**Key differences from MicroPullback:**
+- No surge required — consolidation IS the setup
+- Enters BEFORE breakout (MicroPullback enters after)
+- VWAP is the signal (slope + proximity), not just a gate
+- Stop below VWAP, not below pullback low
+- Zero overlap with MicroPullback (no surge = MicroPullback can't fire)
+
+**Hard gates:**
+- VWAP data required (not optional)
+- Entry bar must be green, in bottom 35% of consolidation range
+- Price must NOT have broken above consolidation high (no breakout yet)
+- Consolidation window must not span 9:30 ET VWAP reset
+
+**Configuration:**
+```python
+from candle_patterns import VwapBounce
+
+detector = VwapBounce({
+    "min_consolidation_bars": 5,        # Min bars of tight range
+    "max_consolidation_bars": 15,       # Max bars to scan backward
+    "max_consolidation_range_pct": 2.0, # Max (high-low)/price during consolidation
+    "min_consolidation_range_cents": 5, # Floor for cheap stocks
+    "vwap_slope_lookback": 10,          # Bars to measure VWAP slope
+    "min_vwap_rising_bars": 6,          # 6/10 bars strictly increasing (>)
+    "max_price_vwap_gap_pct": 3.0,      # Max avg distance from price to VWAP
+    "require_gap_narrowing": True,      # VWAP must be catching up to price
+    "entry_zone_pct": 35,              # Entry in bottom 35% of consolidation range
+    "stop_buffer_pct": 0.5,            # 0.5% below VWAP
+    "stop_buffer_min_cents": 3,        # Minimum 3 cents buffer
+    "stop_buffer_atr_multiplier": 1.5, # ATR(14) × 1.5 floor
+    "max_stop_distance_pct": 4.0,      # Max stop distance from entry
+    "require_macd_positive": False,    # Boost only, not hard gate
+    "vwap_exit_confirmation_bars": 3,  # Higher than default (entries near VWAP)
 })
 ```
 

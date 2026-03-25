@@ -19,6 +19,7 @@ Usage:
 from .base import PatternResult, PatternDetector, ExitSignal
 from .micro_pullback import MicroPullback
 from .reversal import ReversalPatternDetector
+from .vwap_bounce import VwapBounce
 
 # Trailing stop module exports
 from .trailing import (
@@ -41,4 +42,5 @@ __all__ = [
     # Pattern detectors
     "MicroPullback",
     "ReversalPatternDetector",
+    "VwapBounce",
 ]
