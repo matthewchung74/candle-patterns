@@ -84,6 +84,7 @@ class MicroPullback(PatternDetector):
             # Quality filter (lowered from 2.0: with 3% stop floor, 5-6% micro-surges
             # on $10+ stocks produce estimated R:R ~1.5. Gate's bracket R:R is the real check.)
             "min_rr_for_setup": 1.2,
+
         }
 
     def detect(
