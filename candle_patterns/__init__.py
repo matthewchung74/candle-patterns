@@ -4,7 +4,8 @@ Candle Patterns - Momentum Pattern Detection
 
 Detects momentum day trading patterns:
 - Micro Pullback (long)
-- Reversal patterns: ShootingStar, BearishEngulfing, EveningStar, VolumeClimax (short)
+- VwapBounce (long)
+- ParabolicExhaustion (short)
 
 Usage:
     from candle_patterns import MicroPullback
@@ -18,7 +19,7 @@ Usage:
 
 from .base import PatternResult, PatternDetector, ExitSignal
 from .micro_pullback import MicroPullback
-from .reversal import ReversalPatternDetector
+from .parabolic_exhaustion import ParabolicExhaustion
 from .vwap_bounce import VwapBounce
 
 # Trailing stop module exports
@@ -41,6 +42,6 @@ __all__ = [
     "TrailingStopResult",
     # Pattern detectors
     "MicroPullback",
-    "ReversalPatternDetector",
+    "ParabolicExhaustion",
     "VwapBounce",
 ]

@@ -8,16 +8,14 @@ Tired of rewriting the same pattern detection logic every time I start a new tra
 
 ## Overview
 
-This library detects common momentum day trading patterns:
+This library detects momentum day trading patterns:
 
 **Long patterns:**
 - **Micro Pullback** - Shallow retracement after a strong move
+- **VWAP Bounce** - Consolidation entry on rising VWAP before breakout
 
-**Short (reversal) patterns:**
-- **Shooting Star** - Long upper wick rejection at highs
-- **Bearish Engulfing** - Red candle engulfs prior green at highs
-- **Evening Star** - 3-bar topping pattern (green, doji, red)
-- **Volume Climax** - Extreme volume spike at highs with red reversal
+**Short patterns:**
+- **Parabolic Exhaustion** - Blow-off top reversal on extended small-cap stocks
 
 All patterns run on 1-minute OHLCV bars.
 
@@ -39,7 +37,7 @@ pip install -e .
 
 ```python
 import pandas as pd
-from candle_patterns import MicroPullback, VwapBounce, ReversalPatternDetector
+from candle_patterns import MicroPullback, VwapBounce, ParabolicExhaustion
 
 # Your OHLCV data (newest bar last)
 bars = pd.DataFrame({
@@ -50,7 +48,7 @@ bars = pd.DataFrame({
     'volume': [...],
 })
 
-# Detect Micro Pullback
+# Detect Micro Pullback (long)
 detector = MicroPullback()
 result = detector.detect(bars)
 
@@ -60,11 +58,11 @@ if result.detected:
     print(f"Stop: ${result.stop_price:.2f}")
     print(f"Confidence: {result.confidence:.0%}")
 
-# Detect reversal patterns (short side)
-reversal = ReversalPatternDetector()
-result = reversal.detect(bars)
+# Detect Parabolic Exhaustion (short)
+exhaustion = ParabolicExhaustion()
+result = exhaustion.detect(bars)
 if result.detected:
-    print(f"Reversal: {result.pattern_name}")  # ShootingStar, BearishEngulfing, EveningStar, VolumeClimax
+    print(f"Pattern: {result.pattern_name}")
     print(f"Direction: {result.details['direction']}")  # always "short"
 ```
 
@@ -148,56 +146,40 @@ detector = VwapBounce({
 })
 ```
 
-### Reversal Patterns (Short Side)
+### Parabolic Exhaustion (Short Side)
 
-Detects bearish reversal patterns on extended stocks for short entry. Requires the stock to be up 20%+ from open.
+Detects blow-off tops on extended small-cap stocks. The pattern fires when a stock has gone parabolic (25%+ extension from open), printed 3+ strong green bars in a row, hit a volume climax (3x average), then shows price rejection near the high of day with a red entry bar.
 
-All patterns require the HOD to be **fresh** (within last 10 bars) — stale retests of old highs are rejected.
+**Detection algorithm:**
+1. Stock must be extended 25%+ from open
+2. At least 3 strong green bars in the run-up
+3. Volume climax: current or recent volume >= 3x the 20-bar average
+4. HOD must be fresh (within last 8 bars)
+5. Price rejection near HOD (within configurable window)
+6. Entry bar must be red (selling has begun)
 
-Sub-patterns detected (in priority order):
-1. **Evening Star** - 3-bar pattern: strong green, small doji, red closes below green midpoint
-2. **Volume Climax** - Volume >3x 20-bar avg at fresh HOD with red candle or topping tail
-3. **Shooting Star** - Long upper wick (>2x body), body in lower third, at fresh HOD
-4. **Bearish Engulfing** - Red candle fully engulfs prior green candle at fresh HOD
+**Direction:** Always short. Stop is placed above the HOD plus an ATR buffer.
 
 ```python
-from candle_patterns import ReversalPatternDetector
+from candle_patterns import ParabolicExhaustion
 
-detector = ReversalPatternDetector()
+detector = ParabolicExhaustion()
 result = detector.detect(bars, vwap=vwap_series, macd=macd_df)
 
 if result.detected:
-    print(f"Pattern: {result.pattern_name}")  # e.g. "VolumeClimax"
+    print(f"Pattern: {result.pattern_name}")  # "ParabolicExhaustion"
     print(f"Direction: {result.details['direction']}")  # always "short"
 ```
 
 **Configuration:**
 ```python
-detector = ReversalPatternDetector({
-    # Extension requirements
-    "min_extension_from_open_pct": 20.0,  # Stock must be up 20%+ from open
-    "min_extension_from_low_pct": 25.0,   # 25%+ from intraday low
-
-    # Volume climax
-    "volume_climax_multiplier": 3.0,      # Volume > 3x 20-bar avg
-    "volume_avg_period": 20,
-
-    # Shooting star
-    "min_upper_wick_ratio": 2.0,          # Upper wick >= 2x body
-    "max_body_position_pct": 33.0,        # Body in lower third
-
-    # Bearish engulfing
-    "min_engulf_ratio": 1.0,              # Red body >= green body
-
-    # Evening star
-    "max_middle_body_pct": 30.0,          # Middle candle body < 30% of range
-
-    # HOD recency
-    "max_hod_age_bars": 10,               # HOD must be within last 10 bars
-
-    # Risk
-    "stop_buffer_pct": 1.0,              # Stop 1% above recent HOD
-    "stop_buffer_min_cents": 5,
+detector = ParabolicExhaustion({
+    "min_extension_from_open_pct": 25.0,  # Stock must be up 25%+ from open
+    "min_strong_green_bars": 3,           # Min strong green bars in run-up
+    "volume_climax_multiplier": 3.0,      # Volume >= 3x 20-bar avg
+    "max_hod_age_bars": 8,               # HOD must be within last 8 bars
+    "rejection_window": 3,               # Bars to look back for price rejection
+    "max_stop_distance_pct": 15.0,       # Max stop distance from entry
 })
 ```
 
@@ -231,7 +213,7 @@ Confidence is a 0.0-1.0 score returned by each detector. It is advisory only; ga
 
 Standard bases/caps:
 - **Micro Pullback**: base 0.65, cap 0.90
-- **Reversal patterns**: base from pattern weight (normalized to ~0.65), cap 0.90
+- **Parabolic Exhaustion**: base 0.65, cap 0.90
 
 Boosts by pattern:
 
@@ -242,13 +224,13 @@ Boosts by pattern:
 | Micro Pullback | macd_positive +0.08 | MACD histogram > 0 |
 | Micro Pullback | macd_slope_up +0.04 | MACD line rising vs 3 bars ago |
 | Micro Pullback | tight_pullback +0.06 | Pullback < 5% |
-| Reversal | above_vwap +0.06 | Room to fall to VWAP |
-| Reversal | macd_weakening +0.06 | MACD histogram declining |
-| Volume Climax | volume_bonus +0.05 | Extra confidence for climax signal |
+| Parabolic Exhaustion | above_vwap +0.06 | Room to fall to VWAP |
+| Parabolic Exhaustion | macd_weakening +0.06 | MACD histogram declining |
+| Parabolic Exhaustion | volume_climax +0.05 | Extra confidence for climax signal |
 
 ## R:R Enforcement
 
-Micro Pullback enforces a minimum R:R via `min_rr_for_setup` (default 1.2). Reversal (short) patterns compute a 50% retracement target and let the downstream gate enforce the 2:1 minimum on the actual R:R.
+Micro Pullback enforces a minimum R:R via `min_rr_for_setup` (default 1.2). Parabolic Exhaustion (short) computes a 50% retracement target and lets the downstream gate enforce the 2:1 minimum on the actual R:R.
 
 ## Stale Data Guard
 
@@ -463,7 +445,7 @@ All detectors return a `PatternResult` with:
 | `confidence` | float | 0.0 to 1.0 confidence score |
 | `entry_price` | float | Suggested entry price |
 | `stop_price` | float | Suggested stop loss price |
-| `target_price` | float | Pattern-derived target (e.g. 50% retracement for reversals) |
+| `target_price` | float | Pattern-derived target (e.g. 50% retracement for shorts) |
 | `stop_distance_cents` | float | Stop distance in cents |
 | `pattern_start_idx` | int | Bar index where pattern starts |
 | `pattern_end_idx` | int | Bar index where pattern ends |
