@@ -112,8 +112,8 @@ MP_PASS_MAX_PULLBACK = _make_bars([
     (10.98, 10.99, 10.20, 10.25, 100000),  # red
     (10.25, 10.28, 9.70, 9.72, 90000),     # red (low: 9.70 = 11.8% from 11.00)
 
-    # Entry: green bounce
-    (9.72, 10.30, 9.68, 10.25, 200000),    # GREEN entry
+    # Entry: green bounce (tight body for valid R:R with close-based entry)
+    (9.72, 10.00, 9.68, 9.80, 200000),     # GREEN entry
 ])
 
 

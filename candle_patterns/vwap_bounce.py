@@ -300,8 +300,8 @@ class VwapBounce(PatternDetector):
         stop_buffer = max(pct_buffer, min_buffer_cents, atr_buffer)
         stop_price = vwap_at_entry - stop_buffer
 
-        # Entry price: open of green candle + 1 cent (no lookahead)
-        entry_price = entry_candle["open"] + 0.01
+        # Entry at close + 1 cent — reflects realistic fill when signal fires at bar close
+        entry_price = entry_candle["close"] + 0.01
 
         # Step 11: Safety checks
         # Reject if any halt bar in pattern

@@ -256,8 +256,8 @@ class MicroPullback(PatternDetector):
             entry_price = swing_high + 0.01
         else:
             # Ross's style: enter on first green after pullback
-            # Entry slightly above open of green candle (no lookahead - open is known)
-            entry_price = entry_candle["open"] + 0.01
+            # Entry at close + 1 cent — reflects realistic fill when signal fires at bar close
+            entry_price = entry_candle["close"] + 0.01
 
         # Step 6: Validate entry price is reasonable
         # Check entry > stop (critical safety check)
