@@ -85,6 +85,11 @@ class MicroPullback(PatternDetector):
             # on $10+ stocks produce estimated R:R ~1.5. Gate's bracket R:R is the real check.)
             "min_rr_for_setup": 1.2,
 
+            # Surge close confirmation: reject wick-only surges where highs spike but
+            # closes don't confirm. Value = max allowed % decline from surge start close
+            # to swing high close. None to disable. 0 = strict (no decline allowed).
+            "surge_close_confirmation_tolerance_pct": 5.0,
+
         }
 
     def detect(
@@ -194,6 +199,19 @@ class MicroPullback(PatternDetector):
             return self.not_detected(
                 f"No valid surge found (need {self.config['min_prior_move_pct']}%+ move with >50% green candles)"
             )
+
+        # Reject wick-only surges where swing high bar close doesn't confirm the move
+        tolerance = self.config.get("surge_close_confirmation_tolerance_pct")
+        if tolerance is not None:
+            surge_start_close = df.iloc[surge_start_idx]["close"]
+            swing_high_close = df.iloc[swing_high_idx_relative]["close"]
+            close_change_pct = self.calculate_move_pct(surge_start_close, swing_high_close)
+            if close_change_pct < -tolerance:
+                return self.not_detected(
+                    f"Surge close not confirmed: swing high bar close ${swing_high_close:.2f} "
+                    f"< surge start close ${surge_start_close:.2f} "
+                    f"({close_change_pct:+.1f}%, tolerance -{tolerance}%)"
+                )
 
         # Reject if any halt bar within pattern range (surge → entry)
         if self._has_halt_bar(df, surge_start_idx, n - 1):
