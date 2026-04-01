@@ -99,6 +99,7 @@ detector = MicroPullback({
     "stop_buffer_atr_period": 14,     # ATR lookback period
     "max_pullback_surge_volume_ratio": 0.75,  # Pullback avg vol < 75% of surge avg
     "max_volume_collapse_ratio": 0.0, # VCR gate: peak pullback / peak surge (0=disabled)
+    "surge_close_confirmation_tolerance_pct": 5.0,  # Reject wick-only surges (None=disabled)
     "min_rr_for_setup": 1.2,          # Minimum 1.2:1 R:R required
 })
 ```
