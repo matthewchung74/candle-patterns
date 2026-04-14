@@ -18,6 +18,7 @@ Usage:
 
 from .base import PatternResult, PatternDetector, ExitSignal
 from .micro_pullback import MicroPullback
+from .news_momentum import NewsMomentum
 from .reversal import ReversalPatternDetector
 from .vwap_bounce import VwapBounce
 
@@ -41,6 +42,7 @@ __all__ = [
     "TrailingStopResult",
     # Pattern detectors
     "MicroPullback",
+    "NewsMomentum",
     "ReversalPatternDetector",
     "VwapBounce",
 ]
