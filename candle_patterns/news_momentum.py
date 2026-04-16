@@ -18,7 +18,9 @@ Fires when ALL of:
   - stop distance <= max_stop_pct_of_price (wide-news-bar safety)
 
 Entry rules:
-  - entry_price = close of the entry bar
+  - entry_price = close of entry bar + entry_buffer_cents/100 (pay up a
+    tick so the limit actually fills against the next bar — momentum
+    plays typically continue through the signal bar's close)
   - stop_price  = min(news_bar.low, entry_bar.low) * (1 - stop_buffer_pct/100)
   - target_price = entry_price + target_r_multiple * (entry_price - stop_price)
 
@@ -68,6 +70,11 @@ class NewsMomentum(PatternDetector):
             # Stop/target
             "max_stop_pct_of_price": 8.0,  # reject if stop > 8% away (wide-news-bar safety)
             "stop_buffer_pct": 1.0,
+            # Pay-up buffer above the entry bar's close. Prevents stale
+            # limits from getting gapped past on the next bar — momentum
+            # plays usually open above the signal bar's close. Set to 0 to
+            # disable. 2 cents is enough for sub-$20 micro-caps.
+            "entry_buffer_cents": 2.0,
             "target_r_multiple": 4.0,
             # Volume floors.
             # min_news_bar_volume = 0: the news bar is just a timestamp anchor,
@@ -170,7 +177,9 @@ class NewsMomentum(PatternDetector):
                 )
 
         entry_bar = bars.iloc[entry_bar_idx]
-        entry_price = float(entry_bar["close"])
+        entry_close = float(entry_bar["close"])
+        entry_buffer = self.config.get("entry_buffer_cents", 0) / 100.0
+        entry_price = entry_close + entry_buffer
 
         # Gate 7: price floor
         if entry_price < self.config["min_price"]:

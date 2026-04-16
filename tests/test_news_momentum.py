@@ -124,11 +124,19 @@ class TestNewsMomentumHappyPath:
         assert r.detected, f"should detect: {r.reason}"
         assert r.pattern_name == "NewsMomentum"
 
-    def test_entry_is_close_of_entry_bar(self):
+    def test_entry_is_close_plus_buffer(self):
         r = self.detector.detect(self.bars)
         assert r.detected
         # Entry bar is index 6, close is 10 * 1.035 = 10.35
-        assert r.entry_price == pytest.approx(10.35, rel=0.01)
+        # Default entry_buffer_cents=2 → limit = 10.37
+        assert r.entry_price == pytest.approx(10.37, abs=0.005)
+
+    def test_entry_buffer_zero_uses_raw_close(self):
+        detector = NewsMomentum(config={"entry_buffer_cents": 0})
+        detector._current_metadata = self.detector._current_metadata
+        r = detector.detect(self.bars)
+        assert r.detected
+        assert r.entry_price == pytest.approx(10.35, abs=0.005)
 
     def test_stop_below_news_bar_low(self):
         r = self.detector.detect(self.bars)
