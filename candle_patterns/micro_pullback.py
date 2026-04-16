@@ -67,6 +67,10 @@ class MicroPullback(PatternDetector):
             "stop_buffer_min_cents": 3,  # Minimum 3 cents buffer
             "stop_buffer_atr_multiplier": 1.5,  # ATR(14) × 1.5 floor (adapts to volatility)
             "stop_buffer_atr_period": 14,  # ATR lookback period
+            # Cap stop distance at N% of entry price. When ATR pushes
+            # the stop wider than this cap, tighten it to exactly N%
+            # below entry. 0 = no cap (current default behavior).
+            "max_stop_distance_pct": 0,
 
             # Minimum bars needed
             "min_bars_required": 6,
@@ -257,6 +261,9 @@ class MicroPullback(PatternDetector):
 
         stop_price = pullback_low - stop_buffer
 
+        # Step 4b: Cap stop distance at max_stop_distance_pct of entry
+        # (applied after Step 5 sets entry_price — see below)
+
         # Step 5: Entry trigger (no lookahead bias)
         prev_bar = df.iloc[-2]  # Previous bar (complete)
         entry_candle = df.iloc[-1]  # Current bar
@@ -293,6 +300,16 @@ class MicroPullback(PatternDetector):
                 f"Entry price {entry_price:.2f} too far from current {current_price:.2f} "
                 f"(>{max_entry_deviation_pct}% deviation - possible stale data)"
             )
+
+        # Step 6a: Cap stop distance at max % of entry price.
+        # When ATR pushes the stop wider than the cap, tighten it so
+        # the risk/share stays bounded. Tighter stop = more shares =
+        # closer target, but the pullback-low structural level is lost.
+        max_stop_pct = self.config.get("max_stop_distance_pct", 0)
+        if max_stop_pct > 0:
+            max_stop_dist = entry_price * (max_stop_pct / 100)
+            if (entry_price - stop_price) > max_stop_dist:
+                stop_price = round(entry_price - max_stop_dist, 4)
 
         stop_distance_cents = (entry_price - stop_price) * 100
 
