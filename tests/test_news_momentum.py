@@ -379,8 +379,8 @@ class TestNewsMomentumPriceAndStopGates:
         assert not r.detected
         assert "below min" in (r.reason or "")
 
-    def test_wide_stop_rejects(self):
-        """News bar with extreme range → stop distance > max_stop_pct."""
+    def test_wide_stop_caps_at_max_pct(self):
+        """News bar with extreme range → stop capped at max_stop_pct, not rejected."""
         start = datetime(2026, 4, 14, 8, 0, tzinfo=ET)
         rows = [{"open": 5.0, "high": 5.0, "low": 5.0, "close": 5.0, "volume": 0}] * 5
         # News bar has huge range: open $5, high $8, low $4.50, close $7
@@ -393,9 +393,11 @@ class TestNewsMomentumPriceAndStopGates:
             "news_article_time": _news_time(bars, 5),
         }
         r = self.detector.detect(bars)
-        # Stop would be 4.50 * 0.99 = 4.455; entry 7.50 → (7.50-4.455)/7.50 = 40.6%
-        assert not r.detected
-        assert "stop distance" in (r.reason or "")
+        # Original stop would be 4.50 * 0.99 = 4.455 (40.6% from entry).
+        # Now capped at 8%: stop = 7.52 * 0.92 = 6.9184
+        assert r.detected
+        assert r.stop_price == pytest.approx(7.52 * 0.92, abs=0.01)
+        assert r.details["stop_distance_pct"] == 8.0
 
     def test_tight_max_stop_config_still_permits_narrow_stops(self):
         """When news bar is tight (2% range), stop fits comfortably."""

@@ -195,10 +195,8 @@ class NewsMomentum(PatternDetector):
         stop_distance_pct = (entry_price - stop_price) / entry_price * 100
         max_stop_pct = self.config["max_stop_pct_of_price"]
         if stop_distance_pct > max_stop_pct:
-            return self._no(
-                f"stop distance {stop_distance_pct:.1f}% > max {max_stop_pct}% "
-                f"(news bar too wide)"
-            )
+            stop_price = round(entry_price * (1 - max_stop_pct / 100), 4)
+            stop_distance_pct = max_stop_pct
 
         risk = entry_price - stop_price
         target_price = entry_price + self.config["target_r_multiple"] * risk
