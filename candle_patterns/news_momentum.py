@@ -68,7 +68,6 @@ class NewsMomentum(PatternDetector):
             "entry_window_start": "04:00",
             "entry_window_end": "10:00",
             # Stop/target
-            "max_stop_pct_of_price": 8.0,  # reject if stop > 8% away (wide-news-bar safety)
             "stop_buffer_pct": 1.0,
             # Pay-up buffer above the entry bar's close. Prevents stale
             # limits from getting gapped past on the next bar — momentum
@@ -193,11 +192,6 @@ class NewsMomentum(PatternDetector):
             return self._no(f"stop {stop_price:.4f} >= entry {entry_price:.4f}")
 
         stop_distance_pct = (entry_price - stop_price) / entry_price * 100
-        max_stop_pct = self.config["max_stop_pct_of_price"]
-        if stop_distance_pct > max_stop_pct:
-            stop_price = round(entry_price * (1 - max_stop_pct / 100), 4)
-            stop_distance_pct = max_stop_pct
-
         risk = entry_price - stop_price
         target_price = entry_price + self.config["target_r_multiple"] * risk
 
