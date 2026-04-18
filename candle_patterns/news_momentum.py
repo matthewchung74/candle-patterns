@@ -15,7 +15,6 @@ Fires when ALL of:
   - the news bar has volume >= min_news_bar_volume
   - an entry bar (first bar with volume after the news bar) exists within max_entry_delay_bars
   - entry price >= min_price
-  - stop distance <= max_stop_pct_of_price (wide-news-bar safety)
 
 Entry rules:
   - entry_price = close of entry bar + entry_buffer_cents/100 (pay up a
