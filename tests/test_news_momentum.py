@@ -520,6 +520,7 @@ class TestNewsMomentumConfig:
         assert "contract" in wl
         assert "partnership" in wl
         assert "buyback" in wl
+        assert "pivot" in wl
         assert "fda" not in wl
         assert "dilution" not in wl
         assert "merger" not in wl
