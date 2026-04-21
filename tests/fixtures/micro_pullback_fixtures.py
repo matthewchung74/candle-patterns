@@ -2,10 +2,10 @@
 Micro Pullback Test Fixtures
 ============================
 
-Comprehensive limit/boundary testing for the NEW Micro Pullback rules:
+Comprehensive limit/boundary testing for the Micro Pullback rules:
 - Prior move: 5-25%
-- Pullback: ≤12% retracement
-- Duration: ≤2 candles
+- Pullback retrace: ≤50% of surge magnitude
+- Duration: ≤3 candles
 - Entry: First green candle after pullback (aggressive)
 - Minimum 6 bars required
 
@@ -38,20 +38,20 @@ def _make_bars(data: list) -> pd.DataFrame:
 
 # -----------------------------------------------------------------------------
 # MP_PASS_VALID: Standard valid pattern
-# Prior move ~10%, pullback ~8%, green entry
+# Prior move ~7% (detector-picked 2-bar window), retrace ~43%, green entry
 # -----------------------------------------------------------------------------
 MP_PASS_VALID = _make_bars([
-    # Surge: 10% move from 10.00 to 11.00 (3 green candles)
+    # Surge: 2-bar window low=10.28, high=11.02 → 7.2%
     (10.00, 10.35, 9.98, 10.30, 200000),  # green +3%
-    (10.30, 10.65, 10.28, 10.60, 220000),  # green +2.9%
+    (10.30, 10.65, 10.28, 10.60, 220000),  # green +2.9% (surge low = 10.28)
     (10.60, 11.02, 10.58, 11.00, 250000),  # green +3.8% (swing high: 11.02)
 
-    # Pullback: 8% from 11.02 → low ~10.14 (2 candles)
-    (11.00, 11.01, 10.50, 10.55, 100000),  # red
-    (10.55, 10.58, 10.14, 10.18, 80000),   # red (low: 10.14 = 8% pullback)
+    # Pullback: low 10.70 → retrace (11.02-10.70)/(11.02-10.28) = 43%
+    (11.00, 11.01, 10.80, 10.82, 100000),  # red
+    (10.82, 10.85, 10.70, 10.72, 80000),   # red (pullback low)
 
     # Entry: green bounce
-    (10.18, 10.50, 10.15, 10.45, 200000),  # GREEN entry
+    (10.72, 10.95, 10.70, 10.92, 200000),  # GREEN entry
 ])
 
 
@@ -99,40 +99,45 @@ MP_PASS_MAX_PRIOR_MOVE = _make_bars([
 
 
 # -----------------------------------------------------------------------------
-# MP_PASS_MAX_PULLBACK: Pullback at 11.9% (just below 12% maximum)
-# Tests: max_pullback_pct = 12.0
+# MP_PASS_MAX_RETRACE: Retrace at 48% (just below 50% maximum)
+# Tests: max_pullback_retrace_pct = 0.50
+# Surge 2-bar window: low 10.30, high 11.00 → $0.70. Pullback low 10.66 → 48%.
 # -----------------------------------------------------------------------------
-MP_PASS_MAX_PULLBACK = _make_bars([
-    # Surge: 10% move for good R:R
+MP_PASS_MAX_RETRACE = _make_bars([
+    # Surge: 2-bar window low=10.30, high=11.00
     (10.00, 10.35, 10.00, 10.32, 200000),  # green
-    (10.32, 10.68, 10.30, 10.65, 220000),  # green
-    (10.65, 11.00, 10.62, 10.98, 250000),  # green (high: 11.00)
+    (10.32, 10.68, 10.30, 10.65, 220000),  # green (surge low = 10.30)
+    (10.65, 11.00, 10.62, 10.98, 250000),  # green (swing high: 11.00)
 
-    # Pullback: ~11.8% from 11.00 → low = 9.70
-    (10.98, 10.99, 10.20, 10.25, 100000),  # red
-    (10.25, 10.28, 9.70, 9.72, 90000),     # red (low: 9.70 = 11.8% from 11.00)
+    # Pullback: low 10.66 → retrace (11.00-10.66)/(11.00-10.30) = 48.6%
+    (10.98, 10.99, 10.80, 10.82, 100000),  # red
+    (10.82, 10.85, 10.66, 10.68, 90000),   # red (pullback low)
 
-    # Entry: green bounce (tight body for valid R:R with close-based entry)
-    (9.72, 10.00, 9.68, 9.80, 200000),     # GREEN entry
+    # Entry: green bounce
+    (10.68, 10.92, 10.66, 10.88, 200000),  # GREEN entry
 ])
+
+# Alias for backwards compatibility with any remaining references.
+MP_PASS_MAX_PULLBACK = MP_PASS_MAX_RETRACE
 
 
 # -----------------------------------------------------------------------------
 # MP_PASS_MAX_DURATION: Pullback at exactly 2 candles (maximum)
 # Tests: max_pullback_candles = 2
+# Surge 2-bar window: low 10.30, high 11.02. Retrace 39% (below 50% cap).
 # -----------------------------------------------------------------------------
 MP_PASS_MAX_DURATION = _make_bars([
-    # Surge: 10% move (3 green candles)
+    # Surge: 3 green candles
     (10.00, 10.35, 10.00, 10.32, 200000),  # green
-    (10.32, 10.68, 10.30, 10.65, 220000),  # green
-    (10.65, 11.02, 10.62, 11.00, 250000),  # green (high: 11.02)
+    (10.32, 10.68, 10.30, 10.65, 220000),  # green (surge low = 10.30)
+    (10.65, 11.02, 10.62, 11.00, 250000),  # green (swing high: 11.02)
 
-    # Pullback: exactly 2 candles (at limit), shallow 5%
-    (11.00, 11.01, 10.70, 10.72, 100000),  # red candle 1
-    (10.72, 10.75, 10.45, 10.47, 95000),   # red candle 2 (low: 10.45 = 5% from 11.02)
+    # Pullback: exactly 2 candles (at limit), retrace 39%
+    (11.00, 11.01, 10.85, 10.87, 100000),  # red candle 1
+    (10.87, 10.90, 10.74, 10.76, 95000),   # red candle 2 (pullback low 10.74)
 
     # Entry: green bounce
-    (10.47, 10.80, 10.45, 10.75, 200000),  # GREEN entry
+    (10.76, 10.98, 10.74, 10.95, 200000),  # GREEN entry
 ])
 
 
@@ -159,22 +164,22 @@ MP_PASS_MIN_GREEN_RATIO = _make_bars([
 
 
 # -----------------------------------------------------------------------------
-# MP_PASS_MIN_RR: R:R just above 1.5 minimum
-# Tests: min_rr_for_setup = 1.5
-# With ATR-based stop buffer: 2-bar window bars 1-2 has low=10.25, high=10.95 → 6.83%
+# MP_PASS_MIN_RR: R:R just above 1.2 minimum
+# Tests: min_rr_for_setup = 1.2
+# Surge 2-bar window: low 10.25, high 10.95 → 6.83%. Retrace ~44% (under 50%).
 # -----------------------------------------------------------------------------
 MP_PASS_MIN_RR = _make_bars([
-    # Surge: ~6.8% move (just enough for R:R ≈ 2.0 with 3% stop floor)
+    # Surge: ~6.8% move
     (10.00, 10.30, 10.00, 10.28, 150000),  # green (pre)
-    (10.28, 10.50, 10.25, 10.48, 160000),  # green (low: 10.25)
-    (10.48, 10.95, 10.45, 10.93, 180000),  # green (high: 10.95 → 6.83% from 10.25)
+    (10.28, 10.50, 10.25, 10.48, 160000),  # green (surge low 10.25)
+    (10.48, 10.95, 10.45, 10.93, 180000),  # green (swing high 10.95)
 
-    # Shallow pullback
-    (10.93, 10.94, 10.58, 10.60, 80000),   # red
-    (10.60, 10.62, 10.52, 10.55, 75000),   # red (low: 10.52)
+    # Shallow pullback: low 10.64 → retrace (10.95-10.64)/(10.95-10.25) = 44%
+    (10.93, 10.94, 10.75, 10.77, 80000),   # red
+    (10.77, 10.80, 10.64, 10.66, 75000),   # red (pullback low 10.64)
 
-    # Entry: green bounce (open close to pullback_low for tight R:R)
-    (10.55, 10.80, 10.50, 10.75, 180000),  # GREEN entry
+    # Entry: green bounce
+    (10.66, 10.86, 10.64, 10.83, 180000),  # GREEN entry
 ])
 
 
@@ -224,21 +229,22 @@ MP_FAIL_ABOVE_MAX_PRIOR = _make_bars([
 
 
 # -----------------------------------------------------------------------------
-# MP_FAIL_PULLBACK_TOO_DEEP: Pullback at 12.5% (above 12% maximum)
-# Tests: max_pullback_pct = 12.0
+# MP_FAIL_PULLBACK_TOO_DEEP: Retrace ~75% (above 50% maximum)
+# Tests: max_pullback_retrace_pct = 0.50
+# Surge 2-bar window: low 10.30, high 11.00 → $0.70. Pullback low 10.48 → 74%.
 # -----------------------------------------------------------------------------
 MP_FAIL_PULLBACK_TOO_DEEP = _make_bars([
-    # Surge: 10% move
+    # Surge
     (10.00, 10.35, 10.00, 10.32, 200000),  # green
-    (10.32, 10.68, 10.30, 10.65, 220000),  # green
-    (10.65, 11.00, 10.62, 10.98, 250000),  # green (high: 11.00)
+    (10.32, 10.68, 10.30, 10.65, 220000),  # green (surge low 10.30)
+    (10.65, 11.00, 10.62, 10.98, 250000),  # green (swing high 11.00)
 
-    # Deep pullback: 12.5% from 11.00 → low = 9.625
-    (10.98, 10.99, 10.20, 10.25, 100000),  # red
-    (10.25, 10.28, 9.62, 9.65, 90000),     # red (low: 9.62 = 12.5% from 11.00)
+    # Deep pullback: low 10.48 → retrace (11.00-10.48)/(11.00-10.30) = 74%
+    (10.98, 10.99, 10.60, 10.62, 100000),  # red
+    (10.62, 10.65, 10.48, 10.50, 90000),   # red (pullback low 10.48)
 
     # Entry attempt
-    (9.65, 10.10, 9.60, 10.05, 200000),    # green
+    (10.50, 10.75, 10.48, 10.72, 200000),  # GREEN entry
 ])
 
 
@@ -349,20 +355,20 @@ MP_FAIL_RR_TOO_LOW = _make_bars([
 # -----------------------------------------------------------------------------
 # MP_FAIL_PULLBACK_VOLUME_TOO_HEAVY: Pullback avg volume > 75% of surge avg volume
 # Tests: max_pullback_surge_volume_ratio = 0.75
-# Heavy pullback volume = distribution, not healthy consolidation
+# Retrace kept under 50% so the volume gate is what fires, not retrace.
 # -----------------------------------------------------------------------------
 MP_FAIL_PULLBACK_VOLUME_TOO_HEAVY = _make_bars([
-    # Surge: 10% move, MODERATE volume (avg ~150k)
+    # Surge: MODERATE volume (avg 150k)
     (10.00, 10.35, 9.98, 10.30, 130000),  # green
-    (10.30, 10.65, 10.28, 10.60, 150000),  # green
-    (10.60, 11.02, 10.58, 11.00, 170000),  # green (swing high: 11.02)
+    (10.30, 10.65, 10.28, 10.60, 150000),  # green (surge low 10.28)
+    (10.60, 11.02, 10.58, 11.00, 170000),  # green (swing high 11.02)
 
-    # Pullback: HEAVY volume (avg 200k = 133% of surge avg 150k, way above 75%)
-    (11.00, 11.01, 10.50, 10.55, 180000),  # red, heavy selling
-    (10.55, 10.58, 10.14, 10.18, 220000),  # red, even heavier
+    # Pullback: shallow retrace (~43%) but HEAVY volume (avg 200k > 75% of 150k)
+    (11.00, 11.01, 10.80, 10.82, 180000),  # red, heavy selling
+    (10.82, 10.85, 10.70, 10.72, 220000),  # red, even heavier (pullback low 10.70)
 
     # Entry: green bounce
-    (10.18, 10.50, 10.15, 10.45, 200000),  # GREEN entry
+    (10.72, 10.95, 10.70, 10.92, 200000),  # GREEN entry
 ])
 
 

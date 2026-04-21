@@ -6,12 +6,12 @@ Comprehensive boundary/limit tests for Micro Pullback pattern detection.
 
 Rules tested:
 - min_prior_move_pct: 5.0%
-- max_prior_move_pct: 15.0%
-- max_pullback_pct: 12.0%
+- max_prior_move_pct: 25.0%
+- max_pullback_retrace_pct: 0.50 (retrace as fraction of surge)
 - max_pullback_candles: 3
 - >50% green candles in surge
 - Entry candle must be green
-- min_rr_for_setup: 1.5
+- min_rr_for_setup: 1.2
 - stop_buffer_atr_multiplier: 1.5 (ATR-based floor)
 
 Run with: pytest tests/test_micro_pullback.py -v
@@ -62,9 +62,9 @@ class TestMicroPullbackDetection:
         assert result.stop_price is not None
         assert result.entry_price > result.stop_price
         # Verify details
-        assert 5.0 <= result.details["prior_move_pct"] <= 15.0
-        assert result.details["pullback_pct"] <= 12.0
-        assert result.details["pullback_candles"] <= 2
+        assert 5.0 <= result.details["prior_move_pct"] <= 25.0
+        assert result.details["pullback_retrace"] <= 0.50
+        assert result.details["pullback_candles"] <= 3
 
     def test_pass_min_prior_move_boundary(self):
         """Test detection with prior move near minimum (7.2% — effective min with 3% stop floor)."""
@@ -83,11 +83,11 @@ class TestMicroPullbackDetection:
         assert result.details["prior_move_pct"] <= 15.0  # Just under max
 
     def test_pass_max_pullback_boundary(self):
-        """Test detection with pullback at 11.9% (just below 12% maximum)."""
+        """Test detection with retrace just below 50% maximum."""
         result = self.detector.detect(MP_PASS_MAX_PULLBACK)
 
         assert result.detected is True
-        assert result.details["pullback_pct"] <= 12.0
+        assert result.details["pullback_retrace"] <= 0.50
 
     def test_pass_max_duration_boundary(self):
         """Test detection with exactly 2 pullback candles (maximum)."""
@@ -269,12 +269,12 @@ class TestMicroPullbackConfig:
     """Tests for Micro Pullback configuration."""
 
     def test_default_config_values(self):
-        """Test that default config has correct NEW values."""
+        """Test that default config has correct values."""
         detector = MicroPullback()
 
         assert detector.config["min_prior_move_pct"] == 5.0
         assert detector.config["max_prior_move_pct"] == 25.0
-        assert detector.config["max_pullback_pct"] == 12.0
+        assert detector.config["max_pullback_retrace_pct"] == 0.50
         assert detector.config["max_pullback_candles"] == 3
         assert detector.config["entry"] == "first_green_after_pullback"
         assert detector.config["stop_buffer_atr_multiplier"] == 1.5
@@ -283,11 +283,11 @@ class TestMicroPullbackConfig:
         """Test that custom config overrides defaults."""
         custom = MicroPullback({
             "min_prior_move_pct": 8.0,
-            "max_pullback_pct": 10.0,
+            "max_pullback_retrace_pct": 0.40,
         })
 
         assert custom.config["min_prior_move_pct"] == 8.0
-        assert custom.config["max_pullback_pct"] == 10.0
+        assert custom.config["max_pullback_retrace_pct"] == 0.40
         # Other defaults should remain
         assert custom.config["max_prior_move_pct"] == 25.0
 
@@ -311,18 +311,19 @@ class TestMicroPullbackVCR:
     def test_vcr_rejects_distribution(self):
         """SER-like bars with high VCR + config 0.55 -> not detected."""
         # SER pattern: peak surge vol 3M, first pullback bar 2M => VCR = 0.67
+        # Retrace kept under 50% so VCR is the gate that fires.
         bars = _make_bars([
-            # Surge: 10% move with massive peak volume
+            # Surge: peak volume 3M
             (10.00, 10.35, 9.98, 10.30, 1_000_000),   # green
             (10.30, 10.65, 10.28, 10.60, 2_000_000),   # green
             (10.60, 11.02, 10.58, 11.00, 3_000_000),   # green, peak surge = 3M
 
-            # Pullback: volume stays high (distribution)
-            (11.00, 11.01, 10.50, 10.55, 2_000_000),   # red, peak pullback = 2M
-            (10.55, 10.58, 10.14, 10.18, 1_800_000),   # red
+            # Pullback: shallow retrace (~43%), volume stays high (distribution)
+            (11.00, 11.01, 10.80, 10.82, 2_000_000),   # red, peak pullback = 2M
+            (10.82, 10.85, 10.70, 10.72, 1_800_000),   # red (pullback low 10.70)
 
             # Entry
-            (10.18, 10.50, 10.15, 10.45, 1_500_000),   # green
+            (10.72, 10.95, 10.70, 10.92, 1_500_000),   # green
         ])
 
         detector = MicroPullback({
@@ -338,18 +339,19 @@ class TestMicroPullbackVCR:
     def test_vcr_passes_capitulation(self):
         """ARTL-like bars with low VCR + config 0.55 -> detected."""
         # ARTL pattern: peak surge vol 531k, first pullback bar 193k => VCR = 0.36
+        # Retrace kept under 50% so only VCR behavior is exercised here.
         bars = _make_bars([
-            # Surge: 10% move with strong volume
+            # Surge: peak volume 531k
             (10.00, 10.35, 9.98, 10.30, 300_000),   # green
             (10.30, 10.65, 10.28, 10.60, 400_000),   # green
             (10.60, 11.02, 10.58, 11.00, 531_000),   # green, peak surge = 531k
 
-            # Pullback: volume collapses (capitulation — healthy)
-            (11.00, 11.01, 10.50, 10.55, 193_000),   # red, peak pullback = 193k
-            (10.55, 10.58, 10.14, 10.18, 150_000),   # red
+            # Pullback: shallow retrace (~43%), volume collapses (healthy)
+            (11.00, 11.01, 10.80, 10.82, 193_000),   # red, peak pullback = 193k
+            (10.82, 10.85, 10.70, 10.72, 150_000),   # red (pullback low 10.70)
 
             # Entry
-            (10.18, 10.50, 10.15, 10.45, 250_000),   # green
+            (10.72, 10.95, 10.70, 10.92, 250_000),   # green
         ])
 
         detector = MicroPullback({
@@ -367,6 +369,111 @@ class TestMicroPullbackVCR:
         assert result.detected is True
         assert "volume_collapse_ratio" in result.details
         assert isinstance(result.details["volume_collapse_ratio"], float)
+
+
+class TestMicroPullbackRetraceGate:
+    """Tests for the pullback-retrace gate (max_pullback_retrace_pct).
+
+    The gate measures pullback depth as a fraction of the prior surge,
+    not as a fraction of price. A 50% default rejects deep retraces
+    (e.g. 72% of surge given back) that the old pct-of-price gate let
+    through — which is what happened with CLIK 2026-04-21 MicroPullback.
+    """
+
+    def test_default_config_value(self):
+        """Default 0.50 — balanced (up to half the surge retraced is OK)."""
+        assert MicroPullback().config["max_pullback_retrace_pct"] == 0.50
+
+    def test_clik_style_deep_retrace_rejects(self):
+        """CLIK 2026-04-21 setup: $0.32 surge, $0.23 pullback = 72% retrace.
+
+        Old 12%-of-price gate passed it at 6.6%; new gate at 0.50 rejects.
+        """
+        # Surge: $3.17 → $3.49 ($0.32). Pullback: $3.49 → $3.26 ($0.23 = 72%).
+        bars = _make_bars([
+            # Pre-surge flat
+            (3.17, 3.21, 3.17, 3.20, 60_000),
+            # Surge: 3 green bars, low 3.17, swing high 3.49
+            (3.20, 3.32, 3.20, 3.31, 100_000),  # green
+            (3.30, 3.49, 3.30, 3.44, 250_000),  # green (swing high 3.49)
+            (3.44, 3.46, 3.40, 3.46, 110_000),  # green
+            # Pullback: 2 red bars, low 3.26 (72% retrace of $0.32 surge)
+            (3.45, 3.49, 3.35, 3.41, 85_000),   # red
+            (3.41, 3.41, 3.26, 3.33, 60_000),   # red (pullback low 3.26)
+            # Entry: green bounce
+            (3.33, 3.38, 3.28, 3.36, 45_000),   # GREEN entry
+        ])
+        detector = MicroPullback({
+            "require_above_vwap": False,
+            "require_macd_positive": False,
+            "max_pullback_surge_volume_ratio": 0,
+        })
+        r = detector.detect(bars)
+        assert not r.detected, f"should reject 72% retrace: reason={r.reason}"
+        assert "retrace" in (r.reason or "").lower()
+
+    def test_shallow_retrace_passes(self):
+        """A ~35% retrace (detector-measured) passes under the 50% cap.
+
+        Detector picks the 2-bar surge window (bars 1–2) by default, so surge
+        magnitude is $10.30 low → $11.00 high = $0.70. Pullback low $10.76 →
+        retrace $0.24/$0.70 ≈ 34%.
+        """
+        bars = _make_bars([
+            (10.00, 10.35, 10.00, 10.32, 200_000),  # green
+            (10.32, 10.68, 10.30, 10.65, 220_000),  # green
+            (10.65, 11.00, 10.62, 10.98, 250_000),  # green (swing high 11.00)
+            (10.98, 10.99, 10.80, 10.82, 100_000),  # red
+            (10.82, 10.85, 10.76, 10.78, 90_000),   # red (pullback low 10.76)
+            (10.78, 10.95, 10.76, 10.92, 200_000),  # GREEN entry
+        ])
+        detector = MicroPullback({
+            "require_above_vwap": False,
+            "require_macd_positive": False,
+            "max_pullback_surge_volume_ratio": 0,
+        })
+        r = detector.detect(bars)
+        assert r.detected, f"~34% retrace should pass: reason={r.reason}"
+
+    def test_looser_config_allows_deeper_retrace(self):
+        """Relaxing the cap to 0.85 lets the CLIK-style deep retrace through."""
+        bars = _make_bars([
+            (3.17, 3.21, 3.17, 3.20, 60_000),
+            (3.20, 3.32, 3.20, 3.31, 100_000),
+            (3.30, 3.49, 3.30, 3.44, 250_000),
+            (3.44, 3.46, 3.40, 3.46, 110_000),
+            (3.45, 3.49, 3.35, 3.41, 85_000),
+            (3.41, 3.41, 3.26, 3.33, 60_000),
+            (3.33, 3.38, 3.28, 3.36, 45_000),
+        ])
+        detector = MicroPullback({
+            "max_pullback_retrace_pct": 0.85,
+            "require_above_vwap": False,
+            "require_macd_positive": False,
+            "max_pullback_surge_volume_ratio": 0,
+        })
+        r = detector.detect(bars)
+        assert r.detected, f"deep retrace should pass at 0.85 cap: reason={r.reason}"
+
+    def test_retrace_in_details(self):
+        """pullback_retrace exposed in details dict for observability."""
+        bars = _make_bars([
+            (10.00, 10.35, 10.00, 10.32, 200_000),
+            (10.32, 10.68, 10.30, 10.65, 220_000),
+            (10.65, 11.00, 10.62, 10.98, 250_000),
+            (10.98, 10.99, 10.80, 10.82, 100_000),
+            (10.82, 10.85, 10.76, 10.78, 90_000),
+            (10.78, 10.95, 10.76, 10.92, 200_000),
+        ])
+        detector = MicroPullback({
+            "require_above_vwap": False,
+            "require_macd_positive": False,
+            "max_pullback_surge_volume_ratio": 0,
+        })
+        r = detector.detect(bars)
+        assert r.detected, f"fixture should pass: {r.reason}"
+        assert "pullback_retrace" in r.details
+        assert 0.30 < r.details["pullback_retrace"] < 0.40
 
 
 if __name__ == "__main__":

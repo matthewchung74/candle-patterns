@@ -89,7 +89,7 @@ detector = MicroPullback({
     "min_prior_move_pct": 5.0,       # Min 5% move before pullback
     "max_prior_move_pct": 25.0,      # Max 25% (too extended beyond this)
     "min_green_candles_prior": 2,     # At least 2 green candles in prior move
-    "max_pullback_pct": 12.0,        # Max 12% retracement
+    "max_pullback_retrace_pct": 0.50, # Max 50% retrace of surge magnitude
     "max_pullback_candles": 3,        # Max 3 candles in pullback (micro = tight)
     "require_above_vwap": True,       # HARD GATE: must be above VWAP
     "require_macd_positive": True,    # HARD GATE: MACD histogram > 0

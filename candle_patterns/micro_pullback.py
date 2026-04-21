@@ -8,8 +8,8 @@ Tuned for Ross Cameron's trading style on volatile small caps.
 Pattern Structure:
 1. Strong prior surge (2+ candles with >50% green, 5-15% net gain)
 2. Shallow pullback/consolidation:
-   - Max pullback depth: 12% retracement from swing high
-   - Max duration: 6 candles
+   - Max pullback retrace: 50% of the surge (Fibonacci-style)
+   - Max duration: 3 candles
 3. Entry trigger: First green candle after pullback (aggressive, Ross's style)
 
 Note: Prior moves >25% are not handled (too extended for micro pullback).
@@ -50,8 +50,11 @@ class MicroPullback(PatternDetector):
             "max_prior_move_pct": 25.0,  # Max 25% (shallow pullbacks on big moves)
             "min_green_candles_prior": 2,  # At least 2 candles, >50% green
 
-            # Shallow pullback limits
-            "max_pullback_pct": 12.0,  # Max 12% retracement (shallow only)
+            # Shallow pullback limits. Retrace is measured as a fraction of
+            # the surge (pullback_depth / surge_magnitude), not as a fraction
+            # of price — a 6% pullback on a 8% surge is a 75% retrace and
+            # likely a reversal, not a continuation setup.
+            "max_pullback_retrace_pct": 0.50,  # Max 50% of surge given back
             "max_pullback_candles": 3,  # Max 3 candles in pullback (micro = tight)
 
             # Entry trigger - Ross's style (aggressive)
@@ -237,10 +240,15 @@ class MicroPullback(PatternDetector):
         # Get pullback high (pullback_window, pullback_low, pullback_pct already calculated above)
         pullback_high = pullback_window["high"].max()
 
-        # Check max pullback depth
-        if pullback_pct > self.config["max_pullback_pct"]:
+        # Check max pullback retrace (as fraction of the surge magnitude)
+        surge_magnitude = swing_high - surge_low
+        pullback_depth = swing_high - pullback_low
+        pullback_retrace = (pullback_depth / surge_magnitude) if surge_magnitude > 0 else 0.0
+        max_retrace = self.config["max_pullback_retrace_pct"]
+        if pullback_retrace > max_retrace:
             return self.not_detected(
-                f"Pullback too deep: {pullback_pct:.1f}% > {self.config['max_pullback_pct']}%"
+                f"Pullback retrace too deep: {pullback_retrace:.2f} > {max_retrace} "
+                f"(pullback ${pullback_depth:.2f} vs surge ${surge_magnitude:.2f})"
             )
 
         # Step 4: Calculate stop price first (needed for entry validation)
@@ -482,6 +490,7 @@ class MicroPullback(PatternDetector):
             details={
                 "prior_move_pct": prior_move_pct,
                 "pullback_pct": pullback_pct,
+                "pullback_retrace": round(pullback_retrace, 3),
                 "green_candles": int(green_count),
                 "pullback_candles": pullback_candle_count,
                 "swing_high": swing_high,
