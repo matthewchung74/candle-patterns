@@ -412,6 +412,104 @@ class TestNewsMomentumPriceAndStopGates:
         assert r.detected
 
 
+class TestNewsMomentumDriftGate:
+    """Reject when price has drifted below the entry bar's close.
+
+    Motivating case: ALBT 2026-04-21. Partnership news at 08:00:34, entry
+    bar 08:01 close $0.56 (entry_price $0.58 with buffer). DeepSeek
+    classification lagged; by the time detect() ran at 08:05, price had
+    collapsed to ~$0.40. Without a drift check the stale $0.58 signal fires
+    and the resulting long position is born below its own stop.
+    """
+
+    def test_albt_style_collapse_rejects(self):
+        """Entry bar's close is the signal price. If subsequent bars fall
+        more than max_entry_drift_pct below that close, the signal is stale.
+        """
+        # Bars replicated from ALBT 2026-04-21 08:00-08:05 ET, rounded.
+        start = datetime(2026, 4, 21, 8, 0, tzinfo=ET)
+        rows = [
+            # News bar 08:00 (vol satisfies default min_news_bar_volume=0)
+            {"open": 0.468, "high": 0.600, "low": 0.460, "close": 0.589, "volume": 76_916},
+            # Entry bar 08:01 (first bar after news with vol >= 5k)
+            {"open": 0.561, "high": 0.591, "low": 0.502, "close": 0.560, "volume": 603_338},
+            # Continuation peak 08:02
+            {"open": 0.560, "high": 0.610, "low": 0.545, "close": 0.599, "volume": 1_447_843},
+            # Collapse bar 08:03
+            {"open": 0.597, "high": 0.599, "low": 0.480, "close": 0.494, "volume": 1_306_543},
+            # Collapse continuation 08:04
+            {"open": 0.488, "high": 0.496, "low": 0.415, "close": 0.416, "volume": 1_094_043},
+            # Latest bar 08:05 — price is now ~28% below entry_price
+            {"open": 0.420, "high": 0.450, "low": 0.396, "close": 0.404, "volume": 357_785},
+        ]
+        bars = _make_bars(rows, start)
+        detector = NewsMomentum()
+        detector._current_metadata = {
+            "catalyst_verdict": _Verdict(category="partnership"),
+            "news_article_time": _news_time(bars, 0),
+        }
+        r = detector.detect(bars)
+        assert not r.detected, (
+            f"should reject stale signal after price collapse; got "
+            f"entry={r.entry_price} stop={r.stop_price} reason={r.reason}"
+        )
+        assert "drift" in (r.reason or "").lower()
+
+    def test_price_holding_still_fires(self):
+        """Even if subsequent bars are choppy, if latest close stays within
+        max_entry_drift_pct of entry_price the signal is still valid. This
+        preserves late-DeepSeek entries when the setup hasn't broken.
+        """
+        bars = _canon_bars(news_minute=5, symbol_price=10.00)
+        detector = NewsMomentum()
+        detector._current_metadata = {
+            "catalyst_verdict": _Verdict(),
+            "news_article_time": _news_time(bars, 5),
+        }
+        r = detector.detect(bars)
+        assert r.detected, f"should fire when price holds: {r.reason}"
+
+    def test_drift_check_uses_entry_price(self):
+        """The drift threshold is measured against entry_price (signal level),
+        not against the entry bar's low or the news bar's low."""
+        start = datetime(2026, 4, 21, 8, 0, tzinfo=ET)
+        # Entry bar close 10.00, buffer 0.02 → entry_price = 10.02.
+        # Latest close 9.80 → drift = (10.02 - 9.80) / 10.02 ≈ 2.2% → rejects at 2%.
+        rows = [{"open": 10.0, "high": 10.0, "low": 10.0, "close": 10.0, "volume": 0}] * 5
+        rows += [
+            {"open": 10.0, "high": 10.1, "low": 9.95, "close": 10.05, "volume": 500_000},
+            {"open": 10.05, "high": 10.10, "low": 9.98, "close": 10.00, "volume": 200_000},
+            {"open": 10.00, "high": 10.00, "low": 9.78, "close": 9.80, "volume": 150_000},
+        ]
+        bars = _make_bars(rows, start)
+        detector = NewsMomentum()
+        detector._current_metadata = {
+            "catalyst_verdict": _Verdict(),
+            "news_article_time": _news_time(bars, 5),
+        }
+        r = detector.detect(bars)
+        assert not r.detected
+        assert "drift" in (r.reason or "").lower()
+
+    def test_looser_drift_pct_allows_larger_move(self):
+        """User can relax max_entry_drift_pct via config."""
+        start = datetime(2026, 4, 21, 8, 0, tzinfo=ET)
+        rows = [{"open": 10.0, "high": 10.0, "low": 10.0, "close": 10.0, "volume": 0}] * 5
+        rows += [
+            {"open": 10.0, "high": 10.1, "low": 9.95, "close": 10.05, "volume": 500_000},
+            {"open": 10.05, "high": 10.10, "low": 9.98, "close": 10.00, "volume": 200_000},
+            {"open": 10.00, "high": 10.00, "low": 9.78, "close": 9.80, "volume": 150_000},
+        ]
+        bars = _make_bars(rows, start)
+        detector = NewsMomentum(config={"max_entry_drift_pct": 5.0})
+        detector._current_metadata = {
+            "catalyst_verdict": _Verdict(),
+            "news_article_time": _news_time(bars, 5),
+        }
+        r = detector.detect(bars)
+        assert r.detected, f"2.2% drift should pass when cap is 5%: {r.reason}"
+
+
 class TestNewsMomentumConfig:
     """Config loading and category whitelist defaults."""
 
@@ -440,3 +538,7 @@ class TestNewsMomentumConfig:
         d = NewsMomentum()
         assert d.config["min_news_bar_volume"] == 0  # don't gate on news bar
         assert d.config["min_entry_bar_volume"] == 5_000  # loose for pre-market
+
+    def test_max_entry_drift_pct_default(self):
+        """2% default catches collapsing plays without killing choppy ones."""
+        assert NewsMomentum().config["max_entry_drift_pct"] == 2.0

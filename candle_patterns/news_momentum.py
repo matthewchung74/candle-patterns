@@ -88,6 +88,10 @@ class NewsMomentum(PatternDetector):
             # Bumped from 2 → 5 so thin pre-market stocks that take 3-4 min
             # to spin up have a chance to hit the volume floor.
             "max_entry_delay_bars": 5,
+            # Max drop of latest close below entry_price (pct). Classification
+            # can lag; a broken setup should not. Reject if the play has
+            # already walked away from the signal level.
+            "max_entry_drift_pct": 2.0,
         }
 
     def detect(
@@ -182,6 +186,19 @@ class NewsMomentum(PatternDetector):
         # Gate 7: price floor
         if entry_price < self.config["min_price"]:
             return self._no(f"price ${entry_price:.2f} below min ${self.config['min_price']:.2f}")
+
+        # Gate 8: entry staleness by price drift. The age check above is
+        # entry-bar-vs-news; this one is latest-bar-vs-entry-price. Needed
+        # because classification (DeepSeek) can lag the entry bar by several
+        # minutes, during which price may have already collapsed.
+        latest_close = float(bars.iloc[-1]["close"])
+        max_drift_pct = self.config["max_entry_drift_pct"]
+        drift_pct = (entry_price - latest_close) / entry_price * 100
+        if drift_pct > max_drift_pct:
+            return self._no(
+                f"entry stale: latest close ${latest_close:.4f} drifted "
+                f"{drift_pct:.1f}% below entry ${entry_price:.4f} (max {max_drift_pct:.1f}%)"
+            )
 
         # Build stop + target
         raw_stop = min(float(news_bar["low"]), float(entry_bar["low"]))
