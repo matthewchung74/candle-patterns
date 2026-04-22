@@ -215,10 +215,22 @@ class TestNewsMomentumMetadataGate:
         assert "confidence" in (r.reason or "")
 
     def test_category_not_in_whitelist_rejects(self):
-        self.detector._current_metadata = self._md(category="fda")  # not in default whitelist
+        self.detector._current_metadata = self._md(category="offering")  # not in default whitelist
         r = self.detector.detect(self.bars)
         assert not r.detected
         assert "whitelist" in (r.reason or "")
+
+    def test_category_product_accepted(self):
+        """product is a bread-and-butter small-cap catalyst (ATNM, MMA)."""
+        self.detector._current_metadata = self._md(category="product")
+        r = self.detector.detect(self.bars)
+        assert r.detected, f"product category should fire; got reason={r.reason!r}"
+
+    def test_category_fda_accepted(self):
+        """fda is a core biotech catalyst type (KYTX registrational trial)."""
+        self.detector._current_metadata = self._md(category="fda")
+        r = self.detector.detect(self.bars)
+        assert r.detected, f"fda category should fire; got reason={r.reason!r}"
 
 
 class TestNewsMomentumTimingGate:
@@ -521,7 +533,9 @@ class TestNewsMomentumConfig:
         assert "partnership" in wl
         assert "buyback" in wl
         assert "pivot" in wl
-        assert "fda" not in wl
+        assert "product" in wl
+        assert "fda" in wl
+        assert "offering" not in wl
         assert "dilution" not in wl
         assert "merger" not in wl
 

@@ -58,6 +58,8 @@ class NewsMomentum(PatternDetector):
                 "partnership",
                 "buyback",
                 "pivot",
+                "product",
+                "fda",
             ],
             # News timing
             # max_news_age_minutes bounds "how far past the news we'll still
