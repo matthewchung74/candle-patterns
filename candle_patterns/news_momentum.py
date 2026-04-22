@@ -20,7 +20,9 @@ Entry rules:
   - entry_price = close of entry bar + entry_buffer_cents/100 (pay up a
     tick so the limit actually fills against the next bar — momentum
     plays typically continue through the signal bar's close)
-  - stop_price  = min(news_bar.low, entry_bar.low) * (1 - stop_buffer_pct/100)
+  - stop_price  = min(news_bar.low, entry_bar.low) * (1 - stop_buffer_pct/100),
+    capped at max_stop_distance_pct (default 20%) below entry to prevent
+    risk-sizing from rounding to 0 shares on extreme gap-open news bars
   - target_price = entry_price + target_r_multiple * (entry_price - stop_price)
 
 The catalyst metadata is threaded in via self._current_metadata, which the
@@ -71,6 +73,13 @@ class NewsMomentum(PatternDetector):
             "entry_window_end": "10:00",
             # Stop/target
             "stop_buffer_pct": 1.0,
+            # Cap the natural structural stop at this % below entry. Prevents
+            # risk-sizing from flooring to 0 shares on gap-open news bars
+            # (AGPU 2026-04-22: news bar was first bar of day, stop at 53%
+            # below entry → 0.92 shares → rounds to 0, trade disappears).
+            # Below the cap, the natural stop is preserved (d62aefb's logic:
+            # "wider stop → fewer shares, not more risk").
+            "max_stop_distance_pct": 20.0,
             # Pay-up buffer above the entry bar's close. Prevents stale
             # limits from getting gapped past on the next bar — momentum
             # plays usually open above the signal bar's close. Set to 0 to
@@ -211,6 +220,11 @@ class NewsMomentum(PatternDetector):
             return self._no(f"stop {stop_price:.4f} >= entry {entry_price:.4f}")
 
         stop_distance_pct = (entry_price - stop_price) / entry_price * 100
+        max_stop = self.config.get("max_stop_distance_pct")
+        if max_stop is not None and stop_distance_pct > max_stop:
+            stop_price = round(entry_price * (1 - max_stop / 100), 4)
+            stop_distance_pct = max_stop
+
         risk = entry_price - stop_price
         target_price = entry_price + self.config["target_r_multiple"] * risk
 

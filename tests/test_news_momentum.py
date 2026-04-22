@@ -391,15 +391,13 @@ class TestNewsMomentumPriceAndStopGates:
         assert not r.detected
         assert "below min" in (r.reason or "")
 
-    def test_wide_stop_uses_natural_level(self):
-        """News bar with extreme range → stop uses natural news-bar-low level,
-        no rejection and no cap. Dollar risk is bounded by max_risk_per_trade,
-        not by stop distance percentage."""
+    def test_wide_stop_capped_not_rejected(self):
+        """News bar with extreme range → stop CAPPED at max_stop_distance_pct,
+        not rejected. Replaces the pre-cap behavior from commit d62aefb.
+        (Cap was reintroduced 2026-04-22 after AGPU round-to-zero bug.)"""
         start = datetime(2026, 4, 14, 8, 0, tzinfo=ET)
         rows = [{"open": 5.0, "high": 5.0, "low": 5.0, "close": 5.0, "volume": 0}] * 5
-        # News bar has huge range: open $5, high $8, low $4.50, close $7
         rows.append({"open": 5.0, "high": 8.0, "low": 4.50, "close": 7.0, "volume": 500_000})
-        # Entry bar: close $7.50
         rows.append({"open": 7.0, "high": 7.60, "low": 6.90, "close": 7.50, "volume": 200_000})
         bars = _make_bars(rows, start)
         self.detector._current_metadata = {
@@ -407,11 +405,42 @@ class TestNewsMomentumPriceAndStopGates:
             "news_article_time": _news_time(bars, 5),
         }
         r = self.detector.detect(bars)
-        # Natural stop = min(news_low=4.50, entry_low=6.90) * 0.99 = 4.455
-        # Distance = 40.6% — wide, but no gate blocks it
         assert r.detected
-        assert r.stop_price == pytest.approx(4.455, abs=0.01)
-        assert r.details["stop_distance_pct"] == pytest.approx(40.6, abs=1.0)
+        # With 20% cap: entry $7.52 → stop $6.016 → distance 20%
+        assert r.details["stop_distance_pct"] == pytest.approx(20.0, abs=0.1)
+
+    def test_wide_stop_capped_at_20pct(self):
+        """When natural stop > 20% below entry, cap it at 20%.
+        Today's AGPU (news bar is market-open bar, natural stop = 53%
+        below entry) would have rounded shares to 0 without the cap."""
+        start = datetime(2026, 4, 14, 8, 0, tzinfo=ET)
+        rows = [{"open": 5.0, "high": 5.0, "low": 5.0, "close": 5.0, "volume": 0}] * 5
+        # News bar: open $5, low $4.50, close $7 (big range, stop will be very wide)
+        rows.append({"open": 5.0, "high": 8.0, "low": 4.50, "close": 7.0, "volume": 500_000})
+        # Entry bar close $7.50, low $6.90
+        rows.append({"open": 7.0, "high": 7.60, "low": 6.90, "close": 7.50, "volume": 200_000})
+        bars = _make_bars(rows, start)
+        self.detector._current_metadata = {
+            "catalyst_verdict": _Verdict(),
+            "news_article_time": _news_time(bars, 5),
+        }
+        r = self.detector.detect(bars)
+        assert r.detected
+        # Entry = close + 2¢ = $7.52. Cap at 20% → stop = $7.52 * 0.80 = $6.016
+        assert r.stop_price == pytest.approx(6.016, abs=0.01)
+        assert r.details["stop_distance_pct"] == pytest.approx(20.0, abs=0.1)
+
+    def test_narrow_stop_uses_natural_level(self):
+        """Below the 20% cap, the natural stop is preserved (no cap applied)."""
+        bars = _canon_bars(news_minute=5, symbol_price=10.00)  # narrow bar, stop ~3%
+        self.detector._current_metadata = {
+            "catalyst_verdict": _Verdict(),
+            "news_article_time": _news_time(bars, 5),
+        }
+        r = self.detector.detect(bars)
+        assert r.detected
+        # Natural stop should be well under 20%
+        assert r.details["stop_distance_pct"] < 10.0
 
     def test_tight_stop_still_works(self):
         """When news bar is tight (2% range), stop fits comfortably."""
