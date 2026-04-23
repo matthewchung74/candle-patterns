@@ -94,8 +94,9 @@ class NewsMomentum(PatternDetector):
             #   fill. 5k shares at $5+ is enough for a paper-size position.
             "min_news_bar_volume": 0,
             "min_entry_bar_volume": 5_000,
-            # Price floor
-            "min_price": 0.50,
+            # Price floor. $2 is empirical — sub-$2 trades on this system
+            # have a ~8% WR with net-negative P&L across all sessions to date.
+            "min_price": 2.00,
             # How many bars after the news bar to look for a volume entry.
             # Bumped from 2 → 5 so thin pre-market stocks that take 3-4 min
             # to spin up have a chance to hit the volume floor.

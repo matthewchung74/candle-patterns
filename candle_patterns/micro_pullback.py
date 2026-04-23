@@ -97,6 +97,11 @@ class MicroPullback(PatternDetector):
             # to swing high close. None to disable. 0 = strict (no decline allowed).
             "surge_close_confirmation_tolerance_pct": 5.0,
 
+            # Price floor — entries below this price are rejected. Data shows
+            # $0-3 = 21% WR, $10+ = 71% WR; and recent paper sessions show
+            # sub-$2 net-negative. 0 disables.
+            "min_price_threshold": 2.00,
+
         }
 
     def detect(

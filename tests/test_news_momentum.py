@@ -380,9 +380,9 @@ class TestNewsMomentumPriceAndStopGates:
         self.detector = NewsMomentum()
 
     def test_price_below_floor_rejects(self):
-        """Entry price below min_price ($0.50 default) → reject."""
-        # $0.30 stock — after the 20% pop, still below $0.50
-        bars = _canon_bars(news_minute=5, symbol_price=0.30)
+        """Entry price below min_price ($2.00 default) → reject."""
+        # $1.50 stock — after the 20% pop, still below $2.00
+        bars = _canon_bars(news_minute=5, symbol_price=1.50)
         self.detector._current_metadata = {
             "catalyst_verdict": _Verdict(),
             "news_article_time": _news_time(bars, 5),
@@ -484,7 +484,10 @@ class TestNewsMomentumDriftGate:
             {"open": 0.420, "high": 0.450, "low": 0.396, "close": 0.404, "volume": 357_785},
         ]
         bars = _make_bars(rows, start)
-        detector = NewsMomentum()
+        # ALBT was a sub-$1 name and the default min_price floor would
+        # reject it first — drop the floor here so we exercise the drift
+        # gate (the behavior under test).
+        detector = NewsMomentum(config={"min_price": 0.0})
         detector._current_metadata = {
             "catalyst_verdict": _Verdict(category="partnership"),
             "news_article_time": _news_time(bars, 0),
